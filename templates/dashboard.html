@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - FinTrack{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+        <h1 class="text-3xl font-bold">Dashboard</h1>
+        <p class="mt-2 text-indigo-100">Welcome back! Here's an overview of your finances.</p>
+    </div>
+
+    <!-- Bank Linking Section -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">🏦 Bank Account (Simulated)</h2>
+        <div class="flex items-center space-x-4 flex-wrap gap-3">
+            {% if bank_linked %}
+                <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                    Bank Linked
+                </span>
+                <button id="sync-btn" 
+                        class="bg-indigo-600 text-white px-5 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all transform hover:scale-105">
+                    🔄 Sync Transactions
+                </button>
+                <button id="generate-demo-btn" 
+                        class="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all transform hover:scale-105">
+                    📊 Generate Demo Data
+                </button>
+            {% else %}
+                <span class="text-gray-600">No bank account linked</span>
+                <a href="{{ url_for('bank_connect') }}" 
+                   class="bg-indigo-600 text-white px-5 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all transform hover:scale-105">
+                    🔗 Link Bank Account
+                </a>
+            {% endif %}
+            <span id="sync-status" class="text-sm font-medium"></span>
+        </div>
+        
+        <!-- Info box -->
+        <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-md">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-blue-800">
+                        <strong>Note:</strong> This is a simulated banking environment for demonstration purposes. 
+                        No real bank accounts are connected. All transaction data is generated for educational use.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Spending Chart Section -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">📈 Monthly Spending by Category</h2>
+        <div class="flex justify-center items-center" style="min-height: 300px;">
+            <div style="max-width: 500px; width: 100%;">
+                <canvas id="spending-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions Table Section -->
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 class="text-xl font-semibold text-gray-900">📋 Recent Transactions</h2>
+            <p class="text-sm text-gray-600 mt-1">View and categorize your spending</p>
+        </div>
+        <div class="overflow-x-auto">
+            {% include '_transactions.html' %}
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
