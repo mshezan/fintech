@@ -25,7 +25,7 @@ login_manager.login_message_category = 'info'
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Load user by ID - FIXED: Better error handling"""
+    """Load user by ID"""
     try:
         return User.query.get(int(user_id))
     except Exception:
@@ -36,7 +36,7 @@ def load_user(user_id):
 app.register_blueprint(auth_bp)
 
 
-# Error handlers - FIXED: Proper error handling
+# Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
     """Handle 404 errors"""
@@ -60,28 +60,77 @@ with app.app_context():
 @login_required
 def dashboard():
     """
-    Main dashboard route.
-    FIXED: Better query optimization and error handling
+    Enhanced dashboard with monthly filtering - BUG FIXED VERSION.
     """
     try:
-        # FIXED: Limit query results to avoid performance issues
-        transactions = Transaction.query.filter_by(user_id=current_user.id)\
-            .order_by(Transaction.date.desc()).limit(100).all()
+        # Get selected month from query parameter
+        selected_month = request.args.get('month')
         
+        # Default to current month if not specified
+        if not selected_month:
+            selected_month = datetime.now().strftime('%Y-%m')
+        
+        # Parse year and month
+        try:
+            year, month = map(int, selected_month.split('-'))
+        except:
+            year = datetime.now().year
+            month = datetime.now().month
+            selected_month = f"{year:04d}-{month:02d}"
+        
+        # Get all distinct months with transactions for current user
+        # FIX: Handle case where no transactions exist yet
+        all_months_query = db.session.query(
+            func.strftime('%Y-%m', Transaction.date).label('month')
+        ).filter(
+            Transaction.user_id == current_user.id
+        ).distinct().order_by(func.strftime('%Y-%m', Transaction.date).desc()).all()
+        
+        all_months = [m[0] for m in all_months_query if m[0]]
+        
+        # FIX: If no transactions, still provide current month option
+        if not all_months:
+            all_months = [selected_month]
+        
+        # Ensure selected month is in the list
+        if selected_month not in all_months:
+            all_months.insert(0, selected_month)
+        
+        # Sort months in descending order
+        all_months.sort(reverse=True)
+        
+        # Filter transactions by selected month
+        transactions = Transaction.query.filter(
+            Transaction.user_id == current_user.id,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month
+        ).order_by(Transaction.date.desc()).all()
+        
+        # Get all categories
         categories = Category.query.order_by(Category.name).all()
         bank_linked = current_user.aa_token is not None
         
-        return render_template('dashboard.html',
+        return render_template('dashboard.html', 
                              transactions=transactions, 
                              categories=categories,
-                             bank_linked=bank_linked)
+                             bank_linked=bank_linked,
+                             all_months=all_months,
+                             selected_month=selected_month)
+    
     except Exception as e:
+        db.session.rollback()
         print(f"Dashboard error: {e}")
-        flash('Error loading dashboard.', 'error')
+        import traceback
+        traceback.print_exc()
+        
+        # Return dashboard with minimal data (don't crash)
         return render_template('dashboard.html', 
                              transactions=[], 
-                             categories=[], 
-                             bank_linked=False)
+                             categories=Category.query.all(),
+                             bank_linked=False,
+                             all_months=[datetime.now().strftime('%Y-%m')],
+                             selected_month=datetime.now().strftime('%Y-%m'))
+
 
 
 @app.route('/api/bank/connect')
@@ -124,16 +173,12 @@ def bank_callback():
 @app.route('/api/bank/sync', methods=['POST'])
 @login_required
 def bank_sync():
-    """
-    Sync transactions from Account Aggregator.
-    FIXED: Better duplicate checking and batch processing
-    """
+    """Sync transactions from Account Aggregator"""
     try:
         new_transactions_data = bank_api.fetch_new_transactions(current_user)
         transactions_added = 0
         
         for tx_data in new_transactions_data:
-            # Check for duplicates
             tx_date = datetime.strptime(tx_data['date'], '%Y-%m-%d')
             
             existing = Transaction.query.filter_by(
@@ -152,9 +197,7 @@ def bank_sync():
                 )
                 
                 db.session.add(new_transaction)
-                db.session.flush()  # Get ID without committing
-                
-                # Auto-categorize
+                db.session.flush()
                 categorize_transaction(new_transaction)
                 transactions_added += 1
         
@@ -178,10 +221,7 @@ def bank_sync():
 @app.route('/api/transactions/<int:tx_id>/categorize', methods=['POST'])
 @login_required
 def categorize_manual(tx_id):
-    """
-    Manually categorize a transaction.
-    FIXED: Better validation and error handling
-    """
+    """Manually categorize a transaction"""
     try:
         transaction = Transaction.query.get(tx_id)
         
@@ -191,7 +231,6 @@ def categorize_manual(tx_id):
                 'message': 'Transaction not found'
             }), 404
         
-        # Verify ownership
         if transaction.user_id != current_user.id:
             return jsonify({
                 'status': 'error', 
@@ -201,13 +240,11 @@ def categorize_manual(tx_id):
         data = request.get_json()
         category_id = data.get('category_id')
         
-        # Handle empty string as None
         if category_id == '' or category_id == 'null':
             category_id = None
         elif category_id:
             try:
                 category_id = int(category_id)
-                # Verify category exists
                 category = Category.query.get(category_id)
                 if not category:
                     return jsonify({
@@ -241,14 +278,23 @@ def categorize_manual(tx_id):
 @login_required
 def spending_by_category():
     """
-    Get spending aggregated by category for current month.
-    FIXED: Better SQL query optimization
+    Get spending aggregated by category for selected month.
     """
     try:
-        current_month = datetime.now().month
-        current_year = datetime.now().year
+        # Get selected month from query parameter
+        selected_month = request.args.get('month')
         
-        # Query with proper aggregation
+        if not selected_month:
+            selected_month = datetime.now().strftime('%Y-%m')
+        
+        # Parse year and month
+        try:
+            year, month = map(int, selected_month.split('-'))
+        except:
+            year = datetime.now().year
+            month = datetime.now().month
+        
+        # Query with month filtering
         spending_data = db.session.query(
             Category.name,
             func.sum(Transaction.amount).label('total')
@@ -256,8 +302,8 @@ def spending_by_category():
             Transaction, Transaction.category_id == Category.id
         ).filter(
             Transaction.user_id == current_user.id,
-            extract('month', Transaction.date) == current_month,
-            extract('year', Transaction.date) == current_year
+            extract('month', Transaction.date) == month,
+            extract('year', Transaction.date) == year
         ).group_by(Category.name).all()
         
         # Handle uncategorized transactions
@@ -266,8 +312,8 @@ def spending_by_category():
         ).filter(
             Transaction.user_id == current_user.id,
             Transaction.category_id == None,
-            extract('month', Transaction.date) == current_month,
-            extract('year', Transaction.date) == current_year
+            extract('month', Transaction.date) == month,
+            extract('year', Transaction.date) == year
         ).scalar()
         
         # Format data for Chart.js
@@ -291,17 +337,12 @@ def spending_by_category():
 @app.route('/api/demo/generate-data', methods=['POST'])
 @login_required
 def generate_demo_data():
-    """
-    Generate demo transaction data for testing.
-    FIXED: Better batch processing
-    """
+    """Generate demo transaction data"""
     try:
-        # Clear existing transactions
         Transaction.query.filter_by(user_id=current_user.id).delete()
         
         current_date = datetime.now()
         
-        # Generate 3 months of data
         for month_offset in range(3):
             year = current_date.year
             month = current_date.month - month_offset
@@ -324,8 +365,6 @@ def generate_demo_data():
                 
                 db.session.add(new_transaction)
                 db.session.flush()
-                
-                # Auto-categorize
                 categorize_transaction(new_transaction)
         
         db.session.commit()
@@ -349,7 +388,7 @@ def generate_demo_data():
 
 @app.route('/api/demo/setup')
 def setup_demo():
-    """Create demo user for quick testing"""
+    """Create demo user"""
     try:
         demo_user = User.query.filter_by(email=Config.DEMO_USER_EMAIL).first()
         

@@ -3,81 +3,393 @@
 {% block title %}Dashboard - FinTrack{% endblock %}
 
 {% block content %}
-<div class="space-y-8">
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
-        <h1 class="text-3xl font-bold">Dashboard</h1>
-        <p class="mt-2 text-indigo-100">Welcome back! Here's an overview of your finances.</p>
-    </div>
-
-    <!-- Bank Linking Section -->
-    <div class="bg-white rounded-lg shadow-md p-6">
-        <h2 class="text-xl font-semibold text-gray-900 mb-4">🏦 Bank Account (Simulated)</h2>
-        <div class="flex items-center space-x-4 flex-wrap gap-3">
-            {% if bank_linked %}
-                <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-                    </svg>
-                    Bank Linked
-                </span>
-                <button id="sync-btn" 
-                        class="bg-indigo-600 text-white px-5 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all transform hover:scale-105">
-                    🔄 Sync Transactions
-                </button>
-                <button id="generate-demo-btn" 
-                        class="bg-green-600 text-white px-5 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all transform hover:scale-105">
-                    📊 Generate Demo Data
-                </button>
-            {% else %}
-                <span class="text-gray-600">No bank account linked</span>
-                <a href="{{ url_for('bank_connect') }}" 
-                   class="bg-indigo-600 text-white px-5 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all transform hover:scale-105">
-                    🔗 Link Bank Account
-                </a>
-            {% endif %}
-            <span id="sync-status" class="text-sm font-medium"></span>
-        </div>
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         
-        <!-- Info box -->
-        <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-md">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                    </svg>
+        <!-- Header Section -->
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl shadow-lg p-8 text-white">
+            <h1 class="text-4xl font-bold">Dashboard</h1>
+            <p class="mt-3 text-indigo-100 text-lg">Welcome back! Here's an overview of your finances for <span class="font-semibold">{{ selected_month }}</span></p>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            
+            <!-- Left Column: Spending Chart (Larger) -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl shadow-md p-8 h-full">
+                    <div class="flex items-center space-x-2 mb-6">
+                        <span class="text-3xl">📊</span>
+                        <h2 class="text-2xl font-bold text-gray-900">Spending by Category</h2>
+                    </div>
+                    <div class="flex justify-center items-center" style="min-height: 400px;">
+                        <canvas id="spending-chart"></canvas>
+                    </div>
                 </div>
-                <div class="ml-3">
-                    <p class="text-sm text-blue-800">
-                        <strong>Note:</strong> This is a simulated banking environment for demonstration purposes. 
-                        No real bank accounts are connected. All transaction data is generated for educational use.
-                    </p>
+            </div>
+
+            <!-- Right Column: Bank Actions + Month Selector -->
+            <div class="lg:col-span-2 space-y-6">
+                
+                <!-- Bank Account Card -->
+                <div class="bg-white rounded-xl shadow-md p-8">
+                    <div class="flex items-center space-x-2 mb-6">
+                        <span class="text-3xl">🏦</span>
+                        <h2 class="text-2xl font-bold text-gray-900">Bank Account</h2>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <!-- Bank Status -->
+                        <div class="flex items-center justify-between">
+                            <span class="text-gray-700 font-medium">Status:</span>
+                            {% if bank_linked %}
+                                <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800 shadow-sm">
+                                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    Linked
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-gray-100 text-gray-800 shadow-sm">
+                                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                                    </svg>
+                                    Not Linked
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex flex-col space-y-3 pt-4 border-t border-gray-200">
+                            {% if bank_linked %}
+                                <button id="sync-btn" 
+                                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md">
+                                    🔄 Sync Transactions
+                                </button>
+                                <button id="generate-demo-btn" 
+                                        class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 shadow-md">
+                                    📊 Generate Demo Data
+                                </button>
+                            {% else %}
+                                <a href="{{ url_for('bank_connect') }}" 
+                                   class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md text-center block">
+                                    🔗 Link Bank Account
+                                </a>
+                            {% endif %}
+                        </div>
+
+                        <!-- Status Message -->
+                        <div id="sync-status" class="text-sm font-medium text-center pt-2"></div>
+                    </div>
+                </div>
+
+                <!-- Month Selector Card -->
+                <div class="bg-white rounded-xl shadow-md p-8">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <span class="text-3xl">📅</span>
+                        <h3 class="text-2xl font-bold text-gray-900">Time Period</h3>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <label for="month-selector" class="block text-sm font-semibold text-gray-700">
+                            Select Month:
+                        </label>
+                        <select id="month-selector" 
+                                class="w-full px-4 py-3 text-sm border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white hover:border-indigo-400 transition-colors cursor-pointer font-medium text-gray-900">
+                            {% for month in all_months %}
+                                <option value="{{ month }}" {% if month == selected_month %}selected{% endif %}>
+                                    {{ month }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <p class="text-xs text-gray-500 pt-2">💡 Tip: Change the month to view spending patterns over time</p>
+                    </div>
+                </div>
+
+                <!-- Info Box -->
+                <div class="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-semibold text-blue-900">Simulated Banking Environment</p>
+                            <p class="text-sm text-blue-800 mt-1">This is a demonstration project. No real bank accounts are connected. All data is generated for educational purposes.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Spending Chart Section -->
-    <div class="bg-white rounded-lg shadow-md p-6">
-        <h2 class="text-xl font-semibold text-gray-900 mb-4">📈 Monthly Spending by Category</h2>
-        <div class="flex justify-center items-center" style="min-height: 300px;">
-            <div style="max-width: 500px; width: 100%;">
-                <canvas id="spending-chart"></canvas>
+        <!-- Transactions Section -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+            <div class="bg-gradient-to-r from-gray-50 to-gray-100 px-8 py-6 border-b border-gray-200">
+                <div class="flex items-center space-x-2">
+                    <span class="text-3xl">📋</span>
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900">Transactions</h2>
+                        <p class="text-sm text-gray-600 mt-1">View and categorize your spending details</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                {% include '_transactions.html' %}
             </div>
         </div>
-    </div>
 
-    <!-- Transactions Table Section -->
-    <div class="bg-white rounded-lg shadow-md overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 class="text-xl font-semibold text-gray-900">📋 Recent Transactions</h2>
-            <p class="text-sm text-gray-600 mt-1">View and categorize your spending</p>
-        </div>
-        <div class="overflow-x-auto">
-            {% include '_transactions.html' %}
-        </div>
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<!-- Complete Inline JavaScript -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('✓ FinTrack Dashboard Initialized');
+    initializeSpendingChart();
+    setupSyncButton();
+    setupDemoDataButton();
+    setupCategoryDropdowns();
+    setupMonthSelector();
+});
+
+let spendingChart = null;
+
+/**
+ * Initialize spending chart
+ */
+function initializeSpendingChart() {
+    const ctx = document.getElementById('spending-chart');
+    if (!ctx) {
+        console.warn('Chart canvas not found');
+        return;
+    }
+    
+    const selectedMonth = document.getElementById('month-selector')?.value || '{{ selected_month }}';
+    console.log('Fetching chart data for:', selectedMonth);
+    
+    fetch('/api/spending-by-category?month=' + selectedMonth)
+        .then(response => response.json())
+        .then(data => {
+            if (data.labels && data.labels.length > 0) {
+                renderChart(data.labels, data.data);
+            } else {
+                renderEmptyChart();
+            }
+        })
+        .catch(error => {
+            console.error('Chart error:', error);
+            renderEmptyChart();
+        });
+}
+
+/**
+ * Render chart with data
+ */
+function renderChart(labels, data) {
+    const ctx = document.getElementById('spending-chart');
+    if (!ctx) return;
+    
+    const canvasCtx = ctx.getContext('2d');
+    if (spendingChart) spendingChart.destroy();
+    
+    spendingChart = new Chart(canvasCtx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                    '#FF9F40', '#C9CBCF', '#8B5CF6', '#10B981', '#F59E0B'
+                ],
+                borderWidth: 3,
+                borderColor: '#ffffff',
+                hoverOffset: 15
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 20,
+                        font: { size: 13, weight: '600' },
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: { size: 14, weight: 'bold' },
+                    bodyFont: { size: 13 },
+                    cornerRadius: 8,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) label += ': ';
+                            label += '₹' + context.parsed.toFixed(2);
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = ((context.parsed / total) * 100).toFixed(1);
+                            label += ' (' + pct + '%)';
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Render empty chart
+ */
+function renderEmptyChart() {
+    const ctx = document.getElementById('spending-chart');
+    if (!ctx) return;
+    
+    const canvasCtx = ctx.getContext('2d');
+    if (spendingChart) spendingChart.destroy();
+    
+    spendingChart = new Chart(canvasCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['No Data'],
+            datasets: [{ data: [1], backgroundColor: ['#E5E7EB'] }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false }
+            }
+        }
+    });
+}
+
+/**
+ * Month selector
+ */
+function setupMonthSelector() {
+    const selector = document.getElementById('month-selector');
+    if (!selector) return;
+    
+    selector.addEventListener('change', function() {
+        console.log('Month changed to:', this.value);
+        initializeSpendingChart();
+        window.history.pushState({}, '', '/?month=' + this.value);
+    });
+}
+
+/**
+ * Sync button
+ */
+function setupSyncButton() {
+    const btn = document.getElementById('sync-btn');
+    const status = document.getElementById('sync-status');
+    if (!btn) return;
+    
+    btn.addEventListener('click', function() {
+        btn.disabled = true;
+        btn.classList.add('opacity-75');
+        status.textContent = 'Syncing...';
+        status.className = 'text-sm font-medium text-blue-600';
+        
+        fetch('/api/bank/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    status.textContent = '✓ ' + data.message;
+                    status.className = 'text-sm font-medium text-green-600';
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    status.textContent = '✗ Error: ' + data.message;
+                    status.className = 'text-sm font-medium text-red-600';
+                }
+            })
+            .catch(() => {
+                status.textContent = '✗ Sync failed';
+                status.className = 'text-sm font-medium text-red-600';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75');
+            });
+    });
+}
+
+/**
+ * Demo data button
+ */
+function setupDemoDataButton() {
+    const btn = document.getElementById('generate-demo-btn');
+    const status = document.getElementById('sync-status');
+    if (!btn) return;
+    
+    btn.addEventListener('click', function() {
+        if (!confirm('Generate 3 months of demo data?')) return;
+        
+        btn.disabled = true;
+        btn.classList.add('opacity-75');
+        status.textContent = 'Generating...';
+        status.className = 'text-sm font-medium text-blue-600';
+        
+        fetch('/api/demo/generate-data', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    status.textContent = '✓ ' + data.message;
+                    status.className = 'text-sm font-medium text-green-600';
+                    alert('Generated ' + data.transactions + ' transactions!\n\nRefreshing...');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    status.textContent = '✗ Error';
+                    status.className = 'text-sm font-medium text-red-600';
+                }
+            })
+            .catch(() => {
+                status.textContent = '✗ Failed';
+                status.className = 'text-sm font-medium text-red-600';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75');
+            });
+    });
+}
+
+/**
+ * Category dropdowns
+ */
+function setupCategoryDropdowns() {
+    document.querySelectorAll('.category-select').forEach(select => {
+        select.setAttribute('data-original-value', select.value);
+        select.addEventListener('change', function() {
+            const txId = this.getAttribute('data-transaction-id');
+            const catId = this.value;
+            const orig = this.getAttribute('data-original-value');
+            this.disabled = true;
+            
+            fetch('/api/transactions/' + txId + '/categorize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category_id: catId || null })
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        this.setAttribute('data-original-value', catId);
+                        initializeSpendingChart();
+                    } else this.value = orig;
+                })
+                .catch(() => this.value = orig)
+                .finally(() => this.disabled = false);
+        });
+    });
+}
+</script>
 {% endblock %}
