@@ -7,7 +7,6 @@ from config import Config
 from auth import auth_bp
 from datetime import datetime
 from sqlalchemy import func, extract
-from werkzeug.security import generate_password_hash
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -40,7 +39,9 @@ app.register_blueprint(auth_bp)
 @app.errorhandler(404)
 def not_found_error(error):
     """Handle 404 errors"""
-    return render_template('login.html'), 404
+    if current_user.is_authenticated:
+        return render_template('dashboard.html', page_name='dashboard'), 404
+    return redirect(url_for('auth.login'))
 
 
 @app.errorhandler(500)
@@ -56,51 +57,142 @@ with app.app_context():
     initialize_categories()
 
 
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def get_selected_month_and_months_list(user_id):
+    """
+    Helper function to get selected month and list of all available months.
+    Returns: (selected_month, all_months_list)
+    """
+    # Get month from query parameter
+    selected_month = request.args.get('month')
+    
+    # Query for all distinct months with transactions
+    all_months_query = db.session.query(
+        func.strftime('%Y-%m', Transaction.date).label('month')
+    ).filter(
+        Transaction.user_id == user_id
+    ).distinct().order_by(
+        func.strftime('%Y-%m', Transaction.date).desc()
+    ).all()
+    
+    all_months_list = [m[0] for m in all_months_query if m[0]]
+    
+    # Determine selected month
+    if selected_month:
+        # Use month from URL if provided
+        pass
+    elif all_months_list:
+        # Use newest month if transactions exist
+        selected_month = all_months_list[0]
+    else:
+        # Default to current month if no transactions
+        selected_month = datetime.now().strftime('%Y-%m')
+        all_months_list = [selected_month]
+    
+    # Ensure selected month is in list
+    if selected_month and selected_month not in all_months_list:
+        all_months_list.insert(0, selected_month)
+        all_months_list.sort(reverse=True)
+    
+    return selected_month, all_months_list
+
+
+# ============================================================================
+# PAGE ROUTES
+# ============================================================================
+
 @app.route('/')
 @login_required
 def dashboard():
     """
-    Enhanced dashboard with monthly filtering - BUG FIXED VERSION.
+    Dashboard homepage - Overview with chart and summary stats
     """
     try:
-        # Get selected month from query parameter
-        selected_month = request.args.get('month')
+        selected_month, all_months = get_selected_month_and_months_list(current_user.id)
         
-        # Default to current month if not specified
-        if not selected_month:
-            selected_month = datetime.now().strftime('%Y-%m')
-        
-        # Parse year and month
+        # Parse month for queries
         try:
             year, month = map(int, selected_month.split('-'))
         except:
             year = datetime.now().year
             month = datetime.now().month
-            selected_month = f"{year:04d}-{month:02d}"
         
-        # Get all distinct months with transactions for current user
-        # FIX: Handle case where no transactions exist yet
-        all_months_query = db.session.query(
-            func.strftime('%Y-%m', Transaction.date).label('month')
+        # Get summary stats for selected month
+        total_spending = db.session.query(
+            func.sum(Transaction.amount)
         ).filter(
-            Transaction.user_id == current_user.id
-        ).distinct().order_by(func.strftime('%Y-%m', Transaction.date).desc()).all()
+            Transaction.user_id == current_user.id,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month
+        ).scalar() or 0
         
-        all_months = [m[0] for m in all_months_query if m[0]]
+        transaction_count = Transaction.query.filter(
+            Transaction.user_id == current_user.id,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month
+        ).count()
         
-        # FIX: If no transactions, still provide current month option
-        if not all_months:
-            all_months = [selected_month]
+        # Get top category
+        top_category = db.session.query(
+            Category.name,
+            func.sum(Transaction.amount).label('total')
+        ).join(
+            Transaction
+        ).filter(
+            Transaction.user_id == current_user.id,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month
+        ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
         
-        # Ensure selected month is in the list
-        if selected_month not in all_months:
-            all_months.insert(0, selected_month)
+        top_category_name = top_category[0] if top_category else 'N/A'
         
-        # Sort months in descending order
-        all_months.sort(reverse=True)
+        bank_linked = current_user.aa_token is not None
         
-        # Filter transactions by selected month
-        transactions = Transaction.query.filter(
+        return render_template('dashboard.html',
+                             page_name='dashboard',
+                             all_months=all_months,
+                             selected_month=selected_month,
+                             total_spending=total_spending,
+                             transaction_count=transaction_count,
+                             top_category=top_category_name,
+                             bank_linked=bank_linked)
+    
+    except Exception as e:
+        print(f"Dashboard error: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Error loading dashboard.', 'error')
+        return render_template('dashboard.html',
+                             page_name='dashboard',
+                             all_months=[datetime.now().strftime('%Y-%m')],
+                             selected_month=datetime.now().strftime('%Y-%m'),
+                             total_spending=0,
+                             transaction_count=0,
+                             top_category='N/A',
+                             bank_linked=False)
+
+
+@app.route('/transactions')
+@login_required
+def transactions():
+    """
+    Transactions page - Full transaction list with filtering
+    """
+    try:
+        selected_month, all_months = get_selected_month_and_months_list(current_user.id)
+        
+        # Parse month
+        try:
+            year, month = map(int, selected_month.split('-'))
+        except:
+            year = datetime.now().year
+            month = datetime.now().month
+        
+        # Get transactions for selected month
+        transactions_list = Transaction.query.filter(
             Transaction.user_id == current_user.id,
             extract('year', Transaction.date) == year,
             extract('month', Transaction.date) == month
@@ -108,51 +200,119 @@ def dashboard():
         
         # Get all categories
         categories = Category.query.order_by(Category.name).all()
-        bank_linked = current_user.aa_token is not None
         
-        return render_template('dashboard.html', 
-                             transactions=transactions, 
+        return render_template('transactions.html',
+                             page_name='transactions',
+                             transactions=transactions_list,
                              categories=categories,
-                             bank_linked=bank_linked,
                              all_months=all_months,
                              selected_month=selected_month)
     
     except Exception as e:
-        db.session.rollback()
-        print(f"Dashboard error: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        # Return dashboard with minimal data (don't crash)
-        return render_template('dashboard.html', 
-                             transactions=[], 
+        print(f"Transactions error: {e}")
+        flash('Error loading transactions.', 'error')
+        return render_template('transactions.html',
+                             page_name='transactions',
+                             transactions=[],
                              categories=Category.query.all(),
-                             bank_linked=False,
                              all_months=[datetime.now().strftime('%Y-%m')],
                              selected_month=datetime.now().strftime('%Y-%m'))
 
+
+@app.route('/accounts')
+@login_required
+def accounts():
+    """
+    Accounts page - Bank management and sync
+    """
+    bank_linked = current_user.aa_token is not None
+    
+    return render_template('accounts.html',
+                         page_name='accounts',
+                         bank_linked=bank_linked)
+
+
+# ============================================================================
+# API ROUTES
+# ============================================================================
+
+@app.route('/api/spending-by-category')
+@login_required
+def spending_by_category():
+    """
+    Get spending aggregated by category for selected month
+    """
+    try:
+        # Get month from query parameter
+        selected_month = request.args.get('month')
+        
+        if not selected_month:
+            selected_month = datetime.now().strftime('%Y-%m')
+        
+        # Parse month
+        try:
+            year, month = map(int, selected_month.split('-'))
+        except:
+            year = datetime.now().year
+            month = datetime.now().month
+        
+        # Query spending by category
+        spending_data = db.session.query(
+            Category.name,
+            func.sum(Transaction.amount).label('total')
+        ).join(
+            Transaction, Transaction.category_id == Category.id
+        ).filter(
+            Transaction.user_id == current_user.id,
+            extract('month', Transaction.date) == month,
+            extract('year', Transaction.date) == year
+        ).group_by(Category.name).all()
+        
+        # Handle uncategorized
+        uncategorized = db.session.query(
+            func.sum(Transaction.amount).label('total')
+        ).filter(
+            Transaction.user_id == current_user.id,
+            Transaction.category_id == None,
+            extract('month', Transaction.date) == month,
+            extract('year', Transaction.date) == year
+        ).scalar()
+        
+        # Format data
+        labels = [item[0] for item in spending_data]
+        data = [float(item[1]) for item in spending_data]
+        
+        if uncategorized and uncategorized > 0:
+            labels.append('Uncategorized')
+            data.append(float(uncategorized))
+        
+        return jsonify({'labels': labels, 'data': data})
+    
+    except Exception as e:
+        print(f"API error: {e}")
+        return jsonify({'labels': [], 'data': []}), 200
 
 
 @app.route('/api/bank/connect')
 @login_required
 def bank_connect():
-    """Initiate Account Aggregator connection"""
+    """Initiate bank connection"""
     try:
         auth_url = bank_api.initiate_connection(current_user)
         if auth_url:
             return redirect(auth_url)
         else:
             flash('Error connecting to bank.', 'error')
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('accounts'))
     except Exception as e:
         print(f"Bank connect error: {e}")
         flash('Error connecting to bank.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('accounts'))
 
 
 @app.route('/api/bank/callback')
 def bank_callback():
-    """Handle Account Aggregator callback"""
+    """Handle bank connection callback"""
     if not current_user.is_authenticated:
         return redirect(url_for('auth.login'))
     
@@ -167,13 +327,13 @@ def bank_callback():
         print(f"Callback error: {e}")
         flash('Error during bank linking.', 'error')
     
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('accounts'))
 
 
 @app.route('/api/bank/sync', methods=['POST'])
 @login_required
 def bank_sync():
-    """Sync transactions from Account Aggregator"""
+    """Sync transactions from bank"""
     try:
         new_transactions_data = bank_api.fetch_new_transactions(current_user)
         transactions_added = 0
@@ -181,6 +341,7 @@ def bank_sync():
         for tx_data in new_transactions_data:
             tx_date = datetime.strptime(tx_data['date'], '%Y-%m-%d')
             
+            # Check for duplicates
             existing = Transaction.query.filter_by(
                 user_id=current_user.id,
                 date=tx_date,
@@ -213,7 +374,7 @@ def bank_sync():
         db.session.rollback()
         print(f"Sync error: {e}")
         return jsonify({
-            'status': 'error', 
+            'status': 'error',
             'message': 'Failed to sync transactions'
         }), 500
 
@@ -227,13 +388,14 @@ def categorize_manual(tx_id):
         
         if not transaction:
             return jsonify({
-                'status': 'error', 
+                'status': 'error',
                 'message': 'Transaction not found'
             }), 404
         
+        # Security check
         if transaction.user_id != current_user.id:
             return jsonify({
-                'status': 'error', 
+                'status': 'error',
                 'message': 'Unauthorized'
             }), 403
         
@@ -248,12 +410,12 @@ def categorize_manual(tx_id):
                 category = Category.query.get(category_id)
                 if not category:
                     return jsonify({
-                        'status': 'error', 
+                        'status': 'error',
                         'message': 'Invalid category'
                     }), 400
             except ValueError:
                 return jsonify({
-                    'status': 'error', 
+                    'status': 'error',
                     'message': 'Invalid category ID'
                 }), 400
         
@@ -269,69 +431,9 @@ def categorize_manual(tx_id):
         db.session.rollback()
         print(f"Categorization error: {e}")
         return jsonify({
-            'status': 'error', 
+            'status': 'error',
             'message': 'Failed to update category'
         }), 500
-
-
-@app.route('/api/spending-by-category')
-@login_required
-def spending_by_category():
-    """
-    Get spending aggregated by category for selected month.
-    """
-    try:
-        # Get selected month from query parameter
-        selected_month = request.args.get('month')
-        
-        if not selected_month:
-            selected_month = datetime.now().strftime('%Y-%m')
-        
-        # Parse year and month
-        try:
-            year, month = map(int, selected_month.split('-'))
-        except:
-            year = datetime.now().year
-            month = datetime.now().month
-        
-        # Query with month filtering
-        spending_data = db.session.query(
-            Category.name,
-            func.sum(Transaction.amount).label('total')
-        ).join(
-            Transaction, Transaction.category_id == Category.id
-        ).filter(
-            Transaction.user_id == current_user.id,
-            extract('month', Transaction.date) == month,
-            extract('year', Transaction.date) == year
-        ).group_by(Category.name).all()
-        
-        # Handle uncategorized transactions
-        uncategorized = db.session.query(
-            func.sum(Transaction.amount).label('total')
-        ).filter(
-            Transaction.user_id == current_user.id,
-            Transaction.category_id == None,
-            extract('month', Transaction.date) == month,
-            extract('year', Transaction.date) == year
-        ).scalar()
-        
-        # Format data for Chart.js
-        labels = [item[0] for item in spending_data]
-        data = [float(item[1]) for item in spending_data]
-        
-        if uncategorized and uncategorized > 0:
-            labels.append('Uncategorized')
-            data.append(float(uncategorized))
-        
-        return jsonify({
-            'labels': labels,
-            'data': data
-        })
-    
-    except Exception as e:
-        print(f"Spending data error: {e}")
-        return jsonify({'labels': [], 'data': []}), 200
 
 
 @app.route('/api/demo/generate-data', methods=['POST'])
@@ -381,7 +483,7 @@ def generate_demo_data():
         db.session.rollback()
         print(f"Demo data error: {e}")
         return jsonify({
-            'status': 'error', 
+            'status': 'error',
             'message': 'Failed to generate demo data'
         }), 500
 
@@ -390,13 +492,15 @@ def generate_demo_data():
 def setup_demo():
     """Create demo user"""
     try:
+        from werkzeug.security import generate_password_hash
+        
         demo_user = User.query.filter_by(email=Config.DEMO_USER_EMAIL).first()
         
         if not demo_user:
             demo_user = User(
                 email=Config.DEMO_USER_EMAIL,
                 password_hash=generate_password_hash(
-                    Config.DEMO_USER_PASSWORD, 
+                    Config.DEMO_USER_PASSWORD,
                     method='pbkdf2:sha256'
                 )
             )
@@ -413,7 +517,7 @@ def setup_demo():
     except Exception as e:
         db.session.rollback()
         return jsonify({
-            'status': 'error', 
+            'status': 'error',
             'message': str(e)
         }), 500
 

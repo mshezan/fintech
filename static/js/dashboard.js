@@ -1,58 +1,98 @@
-// Dashboard JavaScript - Chart.js and API interactions
-console.log('Dashboard.js loaded!');
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM Content Loaded - Initializing FinTrack');
-    
-    // Initialize all components
-    initializeSpendingChart();
-    setupSyncButton();
-    setupDemoDataButton();
-    setupCategoryDropdowns();
-});
+/**
+ * FinTrack Dashboard JavaScript
+ * Handles chart rendering and month selector updates
+ */
 
 // Global chart instance
 let spendingChart = null;
 
 /**
- * Initialize the spending chart
+ * Initialize dashboard on page load
  */
-function initializeSpendingChart() {
-    const ctx = document.getElementById('spending-chart');
-    if (!ctx) {
-        console.warn('Chart canvas not found');
-        return;
-    }
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('✓ Dashboard page loaded');
     
-    console.log('Fetching spending data...');
+    // Initialize chart with current month
+    const selectedMonth = document.getElementById('month-selector').value;
+    renderChart(selectedMonth);
     
-    fetch('/api/spending-by-category')
-        .then(response => response.json())
+    // Setup month selector listener
+    setupMonthSelector();
+});
+
+
+/**
+ * Setup month selector change listener
+ */
+function setupMonthSelector() {
+    const selector = document.getElementById('month-selector');
+    if (!selector) return;
+    
+    selector.addEventListener('change', function() {
+        const selectedMonth = this.value;
+        console.log('Month changed to:', selectedMonth);
+        
+        // Update chart with new month data
+        renderChart(selectedMonth);
+        
+        // Update URL without page reload
+        window.history.pushState({}, '', '/?month=' + selectedMonth);
+    });
+}
+
+
+/**
+ * Render the spending by category chart
+ * @param {string} month - Month in YYYY-MM format
+ */
+function renderChart(month) {
+    console.log('Rendering chart for month:', month);
+    
+    // Fetch data from API
+    fetch('/api/spending-by-category?month=' + month)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to fetch spending data: ' + response.status);
+            }
+            return response.json();
+        })
         .then(data => {
-            console.log('Spending data:', data);
+            console.log('Chart data received:', data);
+            
+            // Check if data exists
             if (data.labels && data.labels.length > 0) {
-                renderChart(data.labels, data.data);
+                displayChart(data.labels, data.data);
             } else {
-                renderEmptyChart();
+                displayEmptyChart();
             }
         })
         .catch(error => {
-            console.error('Error fetching spending data:', error);
-            renderEmptyChart();
+            console.error('Error fetching chart data:', error);
+            displayEmptyChart();
         });
 }
 
+
 /**
- * Render the doughnut chart
+ * Display chart with data
+ * @param {Array} labels - Category names
+ * @param {Array} data - Spending amounts
  */
-function renderChart(labels, data) {
-    const ctx = document.getElementById('spending-chart').getContext('2d');
+function displayChart(labels, data) {
+    const ctx = document.getElementById('spending-chart');
+    if (!ctx) return;
     
+    const canvasCtx = ctx.getContext('2d');
+    
+    // Destroy existing chart if it exists
     if (spendingChart) {
         spendingChart.destroy();
     }
     
-    spendingChart = new Chart(ctx, {
+    console.log('Creating new chart with labels:', labels, 'and data:', data);
+    
+    // Create new chart
+    spendingChart = new Chart(canvasCtx, {
         type: 'doughnut',
         data: {
             labels: labels,
@@ -60,13 +100,22 @@ function renderChart(labels, data) {
                 label: 'Spending (₹)',
                 data: data,
                 backgroundColor: [
-                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', 
-                    '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF9F40',
-                    '#8B5CF6', '#10B981'
+                    '#FF6384',
+                    '#36A2EB',
+                    '#FFCE56',
+                    '#4BC0C0',
+                    '#9966FF',
+                    '#FF9F40',
+                    '#C9CBCF',
+                    '#8B5CF6',
+                    '#10B981',
+                    '#F59E0B',
+                    '#EC4899',
+                    '#6366F1'
                 ],
-                borderWidth: 2,
+                borderWidth: 3,
                 borderColor: '#ffffff',
-                hoverOffset: 10
+                hoverOffset: 15
             }]
         },
         options: {
@@ -76,17 +125,22 @@ function renderChart(labels, data) {
                 legend: {
                     position: 'bottom',
                     labels: {
-                        padding: 15,
-                        font: { size: 12 }
+                        padding: 20,
+                        font: { size: 13, weight: '600' },
+                        usePointStyle: true,
+                        pointStyle: 'circle'
                     }
                 },
                 tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: { size: 14, weight: 'bold' },
+                    bodyFont: { size: 13 },
+                    cornerRadius: 8,
                     callbacks: {
                         label: function(context) {
                             let label = context.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
+                            if (label) label += ': ';
                             label += '₹' + context.parsed.toFixed(2);
                             
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
@@ -101,20 +155,24 @@ function renderChart(labels, data) {
         }
     });
     
-    console.log('Chart rendered successfully');
+    console.log('✓ Chart rendered successfully');
 }
 
+
 /**
- * Render empty chart
+ * Display empty chart state (no data available)
  */
-function renderEmptyChart() {
-    const ctx = document.getElementById('spending-chart').getContext('2d');
+function displayEmptyChart() {
+    const ctx = document.getElementById('spending-chart');
+    if (!ctx) return;
+    
+    const canvasCtx = ctx.getContext('2d');
     
     if (spendingChart) {
         spendingChart.destroy();
     }
     
-    spendingChart = new Chart(ctx, {
+    spendingChart = new Chart(canvasCtx, {
         type: 'doughnut',
         data: {
             labels: ['No Data'],
@@ -134,191 +192,7 @@ function renderEmptyChart() {
         }
     });
     
-    console.log('Empty chart rendered');
+    console.log('✓ Empty chart displayed');
 }
 
-/**
- * Setup sync button
- */
-function setupSyncButton() {
-    const syncBtn = document.getElementById('sync-btn');
-    const syncStatus = document.getElementById('sync-status');
-    
-    if (!syncBtn) {
-        console.log('Sync button not found (bank not linked yet)');
-        return;
-    }
-    
-    console.log('Sync button found and initialized');
-    
-    syncBtn.addEventListener('click', function() {
-        console.log('Sync button clicked');
-        
-        syncBtn.classList.add('loading');
-        syncBtn.disabled = true;
-        syncStatus.textContent = 'Syncing transactions...';
-        syncStatus.className = 'text-sm font-medium text-blue-600';
-        
-        fetch('/api/bank/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log('Sync response:', data);
-            if (data.status === 'success') {
-                syncStatus.textContent = '✓ ' + data.message;
-                syncStatus.className = 'text-sm font-medium text-green-600';
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                syncStatus.textContent = '✗ Error: ' + data.message;
-                syncStatus.className = 'text-sm font-medium text-red-600';
-            }
-        })
-        .catch(error => {
-            console.error('Sync error:', error);
-            syncStatus.textContent = '✗ Sync failed';
-            syncStatus.className = 'text-sm font-medium text-red-600';
-        })
-        .finally(() => {
-            syncBtn.classList.remove('loading');
-            syncBtn.disabled = false;
-        });
-    });
-}
-
-/**
- * Setup demo data button - CRITICAL FUNCTION
- */
-function setupDemoDataButton() {
-    const demoBtn = document.getElementById('generate-demo-btn');
-    const syncStatus = document.getElementById('sync-status');
-    
-    if (!demoBtn) {
-        console.log('Demo button not found (bank not linked yet)');
-        return;
-    }
-    
-    console.log('✓ Demo data button found and initialized!');
-    
-    demoBtn.addEventListener('click', function() {
-        console.log('🎯 Demo data button clicked!');
-        
-        if (!confirm('This will replace all existing transactions with 3 months of demo data. Continue?')) {
-            console.log('User cancelled demo data generation');
-            return;
-        }
-        
-        console.log('Starting demo data generation...');
-        
-        demoBtn.classList.add('loading');
-        demoBtn.disabled = true;
-        syncStatus.textContent = 'Generating demo data...';
-        syncStatus.className = 'text-sm font-medium text-blue-600';
-        
-        fetch('/api/demo/generate-data', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(response => {
-            console.log('Response status:', response.status);
-            if (!response.ok) {
-                throw new Error('Server responded with status: ' + response.status);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('✓ Demo data response:', data);
-            if (data.status === 'success') {
-                syncStatus.textContent = '✓ ' + data.message;
-                syncStatus.className = 'text-sm font-medium text-green-600';
-                alert('Success! Generated ' + data.transactions + ' transactions!\n\nRefreshing page...');
-                setTimeout(() => window.location.reload(), 1000);
-            } else {
-                syncStatus.textContent = '✗ Error: ' + data.message;
-                syncStatus.className = 'text-sm font-medium text-red-600';
-                alert('Error: ' + data.message);
-            }
-        })
-        .catch(error => {
-            console.error('✗ Demo data generation error:', error);
-            syncStatus.textContent = '✗ Failed to generate demo data';
-            syncStatus.className = 'text-sm font-medium text-red-600';
-            alert('Error: ' + error.message + '\n\nCheck the browser console for details.');
-        })
-        .finally(() => {
-            demoBtn.classList.remove('loading');
-            demoBtn.disabled = false;
-        });
-    });
-}
-
-/**
- * Setup category dropdowns
- */
-function setupCategoryDropdowns() {
-    const categorySelects = document.querySelectorAll('.category-select');
-    console.log('Found ' + categorySelects.length + ' category dropdowns');
-    
-    categorySelects.forEach(select => {
-        select.setAttribute('data-original-value', select.value);
-        
-        select.addEventListener('change', function() {
-            const transactionId = this.getAttribute('data-transaction-id');
-            const categoryId = this.value;
-            const originalValue = this.getAttribute('data-original-value');
-            
-            console.log('Category changed for transaction ' + transactionId);
-            updateTransactionCategory(transactionId, categoryId, this, originalValue);
-        });
-    });
-}
-
-/**
- * Update transaction category
- */
-function updateTransactionCategory(transactionId, categoryId, selectElement, originalValue) {
-    selectElement.disabled = true;
-    selectElement.style.opacity = '0.6';
-    
-    fetch('/api/transactions/' + transactionId + '/categorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category_id: categoryId || null })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to update category');
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.status === 'success') {
-            selectElement.setAttribute('data-original-value', categoryId);
-            console.log('Category updated successfully');
-            
-            // Visual feedback
-            selectElement.style.borderColor = '#10B981';
-            setTimeout(() => {
-                selectElement.style.borderColor = '';
-            }, 1000);
-            
-            // Refresh chart
-            initializeSpendingChart();
-        } else {
-            selectElement.value = originalValue;
-            alert('Failed to update category: ' + data.message);
-        }
-    })
-    .catch(error => {
-        console.error('Category update error:', error);
-        selectElement.value = originalValue;
-        alert('Failed to update category. Please try again.');
-    })
-    .finally(() => {
-        selectElement.disabled = false;
-        selectElement.style.opacity = '1';
-    });
-}
-
-console.log('✓ Dashboard.js loaded completely');
+console.log('✓ Dashboard.js loaded successfully');

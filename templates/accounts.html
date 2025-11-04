@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Accounts - FinTrack{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-green-600 to-indigo-600 rounded-xl shadow-lg p-8 text-white">
+        <h1 class="text-4xl font-bold">Bank Accounts</h1>
+        <p class="mt-2 text-green-100">Manage your connected bank accounts and sync transactions</p>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <!-- Bank Status Card -->
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-md p-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">🏦 Bank Connection</h2>
+            
+            <!-- Status Section -->
+            <div class="mb-6 p-6 rounded-lg {% if bank_linked %}bg-green-50 border-2 border-green-200{% else %}bg-gray-50 border-2 border-gray-200{% endif %}">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Connection Status:</p>
+                        <p class="text-2xl font-bold {% if bank_linked %}text-green-600{% else %}text-gray-600{% endif %} mt-2">
+                            {% if bank_linked %}
+                                ✅ Connected
+                            {% else %}
+                                ❌ Not Connected
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="space-y-3">
+                {% if bank_linked %}
+                    <button id="sync-btn" 
+                            class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-md">
+                        🔄 Sync New Transactions
+                    </button>
+                    <a href="{{ url_for('bank_connect') }}" 
+                       class="block w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg text-center transition-all focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 shadow-md">
+                        🔗 Link Different Account
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('bank_connect') }}" 
+                       class="block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg text-center transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 shadow-md">
+                        🔗 Link Bank Account
+                    </a>
+                {% endif %}
+            </div>
+
+            <!-- Status Message -->
+            <div id="sync-status" class="text-center mt-4 text-sm font-medium"></div>
+
+            <!-- Info Box -->
+            <div class="mt-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
+                <p class="text-sm text-blue-800">
+                    <strong>ℹ️ About Syncing:</strong> Syncing fetches your latest transactions from the connected bank account and automatically categorizes them based on merchant information.
+                </p>
+            </div>
+        </div>
+
+        <!-- Demo Data Card -->
+        <div class="bg-white rounded-xl shadow-md p-8">
+            <h3 class="text-2xl font-bold text-gray-900 mb-6">🧪 Demo Mode</h3>
+            
+            <div class="space-y-4">
+                <div class="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                    <p class="text-sm text-purple-800">
+                        <strong>Generate Test Data:</strong> Create 3 months of sample transactions to explore FinTrack features.
+                    </p>
+                </div>
+                
+                <button id="generate-demo-btn" 
+                        class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 shadow-md">
+                    📊 Generate Demo Data
+                </button>
+            </div>
+
+            <!-- Help Section -->
+            <div class="mt-6 p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded-lg">
+                <p class="text-sm text-yellow-800">
+                    <strong>💡 Quick Start:</strong> New to FinTrack? Try generating demo data to see how it works!
+                </p>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/accounts.js') }}"></script>
+{% endblock %}
