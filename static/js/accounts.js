@@ -1,6 +1,6 @@
 /**
- * FinTrack Accounts JavaScript
- * Handles bank sync and demo data generation
+ * FinTrack Accounts JavaScript - Multi-Account Management
+ * Handles account operations, sync, and demo data generation
  */
 
 /**
@@ -9,79 +9,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✓ Accounts page loaded');
     
-    // Setup sync button
-    setupSyncButton();
-    
     // Setup demo data button
     setupDemoDataButton();
 });
-
-
-/**
- * Setup sync transactions button
- */
-function setupSyncButton() {
-    const btn = document.getElementById('sync-btn');
-    const status = document.getElementById('sync-status');
-    
-    if (!btn) {
-        console.log('Sync button not found (bank may not be linked)');
-        return;
-    }
-    
-    console.log('✓ Sync button initialized');
-    
-    btn.addEventListener('click', function() {
-        console.log('Sync button clicked');
-        
-        // Disable button and show loading state
-        btn.disabled = true;
-        btn.classList.add('opacity-75');
-        status.textContent = 'Syncing transactions...';
-        status.className = 'text-sm font-medium text-blue-600 mt-4 block';
-        
-        // Call sync API
-        fetch('/api/bank/sync', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Sync failed: ' + response.status);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('✓ Sync successful:', data);
-            
-            if (data.status === 'success') {
-                status.textContent = '✓ ' + data.message;
-                status.className = 'text-sm font-medium text-green-600 mt-4 block';
-                
-                // Reload after 2 seconds
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
-            } else {
-                status.textContent = '✗ Sync failed: ' + data.message;
-                status.className = 'text-sm font-medium text-red-600 mt-4 block';
-            }
-        })
-        .catch(error => {
-            console.error('✗ Sync error:', error);
-            
-            status.textContent = '✗ Sync failed. Please try again.';
-            status.className = 'text-sm font-medium text-red-600 mt-4 block';
-        })
-        .finally(() => {
-            // Re-enable button
-            btn.disabled = false;
-            btn.classList.remove('opacity-75');
-        });
-    });
-}
 
 
 /**

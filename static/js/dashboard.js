@@ -1,9 +1,8 @@
 /**
- * FinTrack Dashboard JavaScript
- * Handles chart rendering and month selector updates
+ * FinTrack Dashboard JavaScript - Multi-Account Support
+ * Handles chart rendering, month selector, and account filtering
  */
 
-// Global chart instance
 let spendingChart = null;
 
 /**
@@ -12,13 +11,21 @@ let spendingChart = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✓ Dashboard page loaded');
     
-    // Initialize chart with current month
     const selectedMonth = document.getElementById('month-selector').value;
-    renderChart(selectedMonth);
+    const selectedAccount = getSelectedAccountFromURL();
     
-    // Setup month selector listener
+    renderChart(selectedMonth, selectedAccount);
     setupMonthSelector();
 });
+
+
+/**
+ * Get selected account from URL parameters
+ */
+function getSelectedAccountFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('account') || 'all';
+}
 
 
 /**
@@ -30,13 +37,15 @@ function setupMonthSelector() {
     
     selector.addEventListener('change', function() {
         const selectedMonth = this.value;
+        const selectedAccount = getSelectedAccountFromURL();
+        
         console.log('Month changed to:', selectedMonth);
         
         // Update chart with new month data
-        renderChart(selectedMonth);
+        renderChart(selectedMonth, selectedAccount);
         
         // Update URL without page reload
-        window.history.pushState({}, '', '/?month=' + selectedMonth);
+        window.history.pushState({}, '', `/?month=${selectedMonth}&account=${selectedAccount}`);
     });
 }
 
@@ -44,12 +53,15 @@ function setupMonthSelector() {
 /**
  * Render the spending by category chart
  * @param {string} month - Month in YYYY-MM format
+ * @param {string} account - Account ID or 'all' for combined
  */
-function renderChart(month) {
-    console.log('Rendering chart for month:', month);
+function renderChart(month, account) {
+    console.log('Rendering chart for month:', month, 'account:', account);
     
-    // Fetch data from API
-    fetch('/api/spending-by-category?month=' + month)
+    // Build fetch URL with account parameter
+    const url = `/api/spending-by-category?month=${month}&account=${account}`;
+    
+    fetch(url)
         .then(response => {
             if (!response.ok) {
                 throw new Error('Failed to fetch spending data: ' + response.status);
@@ -59,7 +71,6 @@ function renderChart(month) {
         .then(data => {
             console.log('Chart data received:', data);
             
-            // Check if data exists
             if (data.labels && data.labels.length > 0) {
                 displayChart(data.labels, data.data);
             } else {

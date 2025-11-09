@@ -7,8 +7,23 @@
     
     <!-- Header -->
     <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl shadow-lg p-8 text-white">
-        <h1 class="text-4xl font-bold">Dashboard</h1>
-        <p class="mt-2 text-indigo-100">Financial overview for <span class="font-semibold">{{ selected_month }}</span></p>
+        <div class="flex items-center justify-between flex-wrap gap-4">
+            <div>
+                <h1 class="text-4xl font-bold">Dashboard</h1>
+                <p class="mt-2 text-indigo-100">Financial overview for <span class="font-semibold">{{ selected_month }}</span></p>
+            </div>
+            {% if account_type == 'individual' %}
+            <div class="bg-indigo-700 bg-opacity-50 rounded-lg px-4 py-2">
+                <p class="text-sm text-indigo-100">Viewing Account:</p>
+                <p class="text-lg font-semibold text-white">{{ selected_account.account_name if selected_account else 'Unknown' }}</p>
+            </div>
+            {% elif account_type == 'combined' %}
+            <div class="bg-purple-700 bg-opacity-50 rounded-lg px-4 py-2">
+                <p class="text-sm text-purple-100">Viewing:</p>
+                <p class="text-lg font-semibold text-white">All Accounts Combined</p>
+            </div>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Month Selector & Stats Grid -->
@@ -95,14 +110,19 @@
                 
                 <a href="{{ url_for('transactions') }}" 
                    class="block w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg text-center transition-all transform hover:scale-105">
-                    📋 View Transactions
+                    📋 View All Transactions
+                </a>
+                
+                <a href="{{ url_for('accounts') }}" 
+                   class="block w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 px-4 rounded-lg text-center transition-all transform hover:scale-105">
+                    💳 Manage Accounts
                 </a>
             </div>
             
             <!-- Info Box -->
             <div class="mt-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
                 <p class="text-sm text-blue-800">
-                    <strong>💡 Tip:</strong> Change the month to see spending trends over time
+                    <strong>💡 Tip:</strong> Switch accounts using the selector in the header!
                 </p>
             </div>
         </div>

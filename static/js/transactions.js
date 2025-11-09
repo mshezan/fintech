@@ -1,5 +1,5 @@
 /**
- * FinTrack Transactions JavaScript
+ * FinTrack Transactions JavaScript - Multi-Account Support
  * Handles transaction filtering and categorization
  */
 
@@ -18,8 +18,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 /**
+ * Get selected account from URL parameters
+ */
+function getSelectedAccountFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('account') || 'all';
+}
+
+
+/**
  * Setup month selector change listener
- * Changes month and reloads transactions via URL
  */
 function setupMonthSelector() {
     const selector = document.getElementById('month-selector');
@@ -32,17 +40,18 @@ function setupMonthSelector() {
     
     selector.addEventListener('change', function() {
         const selectedMonth = this.value;
+        const selectedAccount = getSelectedAccountFromURL();
+        
         console.log('Month changed to:', selectedMonth);
         
-        // Reload page with new month parameter
-        window.location.href = '/transactions?month=' + selectedMonth;
+        // Reload page with new month parameter while keeping account filter
+        window.location.href = `/transactions?month=${selectedMonth}&account=${selectedAccount}`;
     });
 }
 
 
 /**
  * Setup category dropdown change handlers using event delegation
- * Single listener on the table container for all category dropdowns
  */
 function setupCategoryDropdowns() {
     const tableContainer = document.getElementById('transaction-table-container');
