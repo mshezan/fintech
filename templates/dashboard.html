@@ -79,11 +79,13 @@
     <!-- Charts Section -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        <!-- Spending by Category Chart -->
+        <!-- Spending by Category Chart - CONSTRAINED SIZE -->
         <div class="lg:col-span-2 bg-white rounded-xl shadow-md p-8">
             <h2 class="text-2xl font-bold text-gray-900 mb-6">📊 Spending by Category</h2>
             <div class="flex justify-center items-center" style="min-height: 350px;">
-                <canvas id="spending-chart"></canvas>
+                <div class="max-w-sm mx-auto w-full">
+                    <canvas id="spending-chart"></canvas>
+                </div>
             </div>
         </div>
         
@@ -102,7 +104,7 @@
                         🔄 Sync Transactions
                     </a>
                 {% else %}
-                    <a href="{{ url_for('bank_connect') }}" 
+                    <a href="{{ url_for('accounts') }}" 
                        class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg text-center transition-all transform hover:scale-105">
                         🔗 Link Bank Account
                     </a>

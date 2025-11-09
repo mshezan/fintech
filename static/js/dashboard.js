@@ -11,10 +11,13 @@ let spendingChart = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✓ Dashboard page loaded');
     
-    const selectedMonth = document.getElementById('month-selector').value;
+    const selectedMonth = document.getElementById('month-selector')?.value;
     const selectedAccount = getSelectedAccountFromURL();
     
-    renderChart(selectedMonth, selectedAccount);
+    if (selectedMonth) {
+        renderChart(selectedMonth, selectedAccount);
+    }
+    
     setupMonthSelector();
 });
 
@@ -33,19 +36,21 @@ function getSelectedAccountFromURL() {
  */
 function setupMonthSelector() {
     const selector = document.getElementById('month-selector');
-    if (!selector) return;
+    if (!selector) {
+        console.log('Month selector not found');
+        return;
+    }
+    
+    console.log('✓ Month selector initialized');
     
     selector.addEventListener('change', function() {
         const selectedMonth = this.value;
         const selectedAccount = getSelectedAccountFromURL();
         
-        console.log('Month changed to:', selectedMonth);
+        console.log('Month changed to:', selectedMonth, 'Account:', selectedAccount);
         
-        // Update chart with new month data
-        renderChart(selectedMonth, selectedAccount);
-        
-        // Update URL without page reload
-        window.history.pushState({}, '', `/?month=${selectedMonth}&account=${selectedAccount}`);
+        // Update URL and reload page
+        window.location.href = `/?month=${selectedMonth}&account=${selectedAccount}`;
     });
 }
 
@@ -91,7 +96,10 @@ function renderChart(month, account) {
  */
 function displayChart(labels, data) {
     const ctx = document.getElementById('spending-chart');
-    if (!ctx) return;
+    if (!ctx) {
+        console.error('Chart canvas not found');
+        return;
+    }
     
     const canvasCtx = ctx.getContext('2d');
     

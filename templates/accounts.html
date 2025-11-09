@@ -8,109 +8,167 @@
     <!-- Header -->
     <div class="bg-gradient-to-r from-green-600 to-indigo-600 rounded-xl shadow-lg p-8 text-white">
         <h1 class="text-4xl font-bold">Bank Accounts</h1>
-        <p class="mt-2 text-green-100">Manage your connected bank accounts and sync transactions</p>
+        <p class="mt-2 text-green-100">Manage your connected bank accounts via Account Aggregator</p>
     </div>
 
-    <!-- Accounts Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {% if accounts %}
-            {% for account in accounts %}
-            <div class="bg-white rounded-xl shadow-md overflow-hidden border-l-4 border-green-500">
-                <!-- Card Header -->
-                <div class="bg-green-50 px-6 py-4 border-b border-gray-200">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-2">
-                            <span class="text-3xl">🏦</span>
-                            <div>
-                                <h3 class="text-lg font-semibold text-gray-900">{{ account.account_name }}</h3>
-                                <p class="text-sm text-gray-600">Bank Account</p>
-                            </div>
-                        </div>
-                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800">
-                            ✅ Active
-                        </span>
-                    </div>
+    <!-- Link New Account Section -->
+    <div class="bg-white rounded-xl shadow-md p-8 border-2 border-indigo-200">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">🔗 Link New Account</h2>
+        
+        <form method="POST" action="{{ url_for('bank_connect_new') }}" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="bank_name" class="block text-sm font-semibold text-gray-700 mb-2">
+                        Bank Name <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" 
+                           id="bank_name" 
+                           name="bank_name" 
+                           required
+                           placeholder="e.g., HDFC Bank, ICICI Bank, SBI"
+                           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                 </div>
-
-                <!-- Card Body -->
-                <div class="px-6 py-6 space-y-4">
-                    <div class="bg-indigo-50 rounded-lg p-4">
-                        <p class="text-sm text-indigo-600 font-medium">Current Balance</p>
-                        <p class="text-3xl font-bold text-indigo-900 mt-1">₹{{ account.balance }}</p>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-blue-50 rounded-lg p-3">
-                            <p class="text-xs text-blue-600 font-medium">Transactions</p>
-                            <p class="text-2xl font-bold text-blue-900 mt-1">{{ account.transaction_count }}</p>
-                        </div>
-                        <div class="bg-purple-50 rounded-lg p-3">
-                            <p class="text-xs text-purple-600 font-medium">Top Category</p>
-                            <p class="text-lg font-bold text-purple-900 mt-1">{{ account.top_category }}</p>
-                        </div>
-                    </div>
-
-                    <div class="text-sm text-gray-600">
-                        <p>Last synced: Never</p>
-                        <p>Created: {{ account.created_at }}</p>
-                    </div>
-                </div>
-
-                <!-- Card Footer -->
-                <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 space-y-2">
-                    <div class="flex space-x-2">
-                        <button class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
-                            ✏️ Rename
-                        </button>
-                        <button class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
-                            🗑️ Deactivate
-                        </button>
-                    </div>
+                
+                <div>
+                    <label for="account_nickname" class="block text-sm font-semibold text-gray-700 mb-2">
+                        Account Nickname <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" 
+                           id="account_nickname" 
+                           name="account_nickname" 
+                           required
+                           placeholder="e.g., Salary Account, Savings"
+                           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                 </div>
             </div>
-            {% endfor %}
-        {% else %}
-            <div class="md:col-span-2 lg:col-span-3">
-                <div class="bg-white rounded-xl shadow-md p-12 text-center">
-                    <div class="text-6xl mb-4">🏦</div>
-                    <p class="text-xl font-semibold text-gray-900 mb-2">No Bank Accounts Linked</p>
-                    <p class="text-gray-600 mb-6">Link your first bank account to get started</p>
-                    <a href="{{ url_for('bank_connect') }}" class="inline-block bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all">
-                        🔗 Link Bank Account
-                    </a>
-                </div>
-            </div>
-        {% endif %}
-    </div>
-
-    <!-- Add New Account Card -->
-    <div class="bg-white rounded-xl shadow-md p-8">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-            <div>
-                <h3 class="text-2xl font-bold text-gray-900">Add Another Account</h3>
-                <p class="text-gray-600 mt-1">Connect a different bank account</p>
-            </div>
-            <a href="{{ url_for('bank_connect') }}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-all">
-                + Link Another Account
-            </a>
+            
+            <button type="submit" 
+                    class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-8 rounded-lg transition-all transform hover:scale-105 shadow-md">
+                + Link Account
+            </button>
+        </form>
+        
+        <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
+            <p class="text-sm text-blue-800">
+                <strong>ℹ️ Note:</strong> This is a simulated environment. In production, this would trigger the Account Aggregator consent flow.
+            </p>
         </div>
     </div>
+
+    <!-- Linked Accounts Section -->
+    {% if linked_accounts %}
+    <div class="bg-white rounded-xl shadow-md p-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">💳 Your Linked Accounts</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {% for account in linked_accounts %}
+            <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-indigo-400 transition-colors bg-gradient-to-br from-white to-gray-50">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <h3 class="font-bold text-gray-900 text-lg">{{ account.account_nickname }}</h3>
+                        <p class="text-sm text-gray-600">{{ account.bank_name }}</p>
+                    </div>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                        ✅ Active
+                    </span>
+                </div>
+                
+                <div class="text-xs text-gray-500 space-y-1 mb-3">
+                    <p>📅 Linked: {{ account.creation_date[:10] }}</p>
+                    <p>📊 Transactions: {{ account.transaction_count }}</p>
+                    {% if account.last_synced %}
+                    <p>🔄 Last synced: {{ account.last_synced[:10] }}</p>
+                    {% else %}
+                    <p>🔄 Last synced: Never</p>
+                    {% endif %}
+                </div>
+                
+                <button data-account-id="{{ account.id }}" 
+                        data-account-name="{{ account.account_nickname }}"
+                        class="delete-account-btn mt-3 w-full text-sm text-red-600 hover:text-red-800 font-medium py-2 px-3 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                    🗑️ Remove Account
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Sync Section -->
+        <div class="border-t-2 border-gray-200 pt-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">🔄 Sync Transactions</h3>
+            
+            <div class="flex flex-col sm:flex-row gap-3">
+                <select id="account-selector" 
+                        class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white font-medium">
+                    {% for account in linked_accounts %}
+                    <option value="{{ account.id }}">{{ account.account_nickname }} ({{ account.bank_name }})</option>
+                    {% endfor %}
+                </select>
+                
+                <button id="sync-btn" 
+                        class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-lg transition-all transform hover:scale-105 shadow-md">
+                    🔄 Sync Selected Account
+                </button>
+            </div>
+            
+            <div id="sync-status" class="text-center mt-4 text-sm font-medium"></div>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-white rounded-xl shadow-md p-12 text-center">
+        <div class="text-6xl mb-4">🏦</div>
+        <p class="text-xl font-semibold text-gray-900 mb-2">No Accounts Linked Yet</p>
+        <p class="text-gray-600">Link your first bank account using the form above to get started</p>
+    </div>
+    {% endif %}
 
     <!-- Demo Data Section -->
     <div class="bg-purple-50 border-2 border-purple-200 rounded-xl p-8">
         <div class="flex items-center justify-between flex-wrap gap-4">
             <div>
                 <h3 class="text-2xl font-bold text-purple-900">🧪 Test Mode</h3>
-                <p class="text-purple-700 mt-1">Generate sample transactions to explore FinTrack</p>
+                <p class="text-purple-700 mt-1">Generate sample transactions to explore FinTrack features</p>
             </div>
-            <button id="generate-demo-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all">
+            <button id="generate-demo-btn" 
+                    class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all transform hover:scale-105 shadow-md">
                 📊 Generate Demo Data
             </button>
         </div>
-        <div id="sync-status" class="text-center mt-4 text-sm font-medium"></div>
     </div>
 
 </div>
+
+<script>
+// Delete account handler
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteButtons = document.querySelectorAll('.delete-account-btn');
+    
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const accountId = this.getAttribute('data-account-id');
+            const accountName = this.getAttribute('data-account-name');
+            
+            if (!confirm('Are you sure you want to remove "' + accountName + '"? This will delete all associated transactions.')) {
+                return;
+            }
+            
+            fetch('/api/linked-accounts/' + accountId + '/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(e => alert('Failed to delete account'));
+        });
+    });
+});
+</script>
 
 <script src="{{ url_for('static', filename='js/accounts.js') }}"></script>
 {% endblock %}

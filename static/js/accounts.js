@@ -1,22 +1,73 @@
 /**
- * FinTrack Accounts JavaScript - Multi-Account Management
- * Handles account operations, sync, and demo data generation
+ * FinTrack Accounts JavaScript - Enhanced LinkedAccount Support
  */
 
-/**
- * Initialize accounts page on load
- */
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✓ Accounts page loaded');
-    
-    // Setup demo data button
+    setupSyncButton();
     setupDemoDataButton();
 });
 
+function setupSyncButton() {
+    const btn = document.getElementById('sync-btn');
+    const status = document.getElementById('sync-status');
+    const selector = document.getElementById('account-selector');
+    
+    if (!btn || !selector) {
+        console.log('Sync button or account selector not found');
+        return;
+    }
+    
+    console.log('✓ Sync button initialized');
+    
+    btn.addEventListener('click', function() {
+        const accountId = selector.value;
+        
+        if (!accountId) {
+            alert('Please select an account to sync');
+            return;
+        }
+        
+        console.log('Syncing account:', accountId);
+        
+        btn.disabled = true;
+        btn.classList.add('opacity-75');
+        status.textContent = 'Syncing transactions...';
+        status.className = 'text-sm font-medium text-blue-600 mt-4 block';
+        
+        fetch('/api/bank/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: parseInt(accountId) })
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Sync failed: ' + response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('✓ Sync successful:', data);
+            
+            if (data.status === 'success') {
+                status.textContent = '✓ ' + data.message;
+                status.className = 'text-sm font-medium text-green-600 mt-4 block';
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                status.textContent = '✗ Sync failed: ' + data.message;
+                status.className = 'text-sm font-medium text-red-600 mt-4 block';
+            }
+        })
+        .catch(error => {
+            console.error('✗ Sync error:', error);
+            status.textContent = '✗ Sync failed. Please try again.';
+            status.className = 'text-sm font-medium text-red-600 mt-4 block';
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.classList.remove('opacity-75');
+        });
+    });
+}
 
-/**
- * Setup generate demo data button
- */
 function setupDemoDataButton() {
     const btn = document.getElementById('generate-demo-btn');
     const status = document.getElementById('sync-status');
@@ -31,58 +82,58 @@ function setupDemoDataButton() {
     btn.addEventListener('click', function() {
         console.log('Demo data button clicked');
         
-        // Confirm with user
         if (!confirm('Generate 3 months of demo transaction data? This will replace existing transactions.')) {
             console.log('User cancelled demo data generation');
             return;
         }
         
-        // Disable button and show loading state
         btn.disabled = true;
         btn.classList.add('opacity-75');
-        status.textContent = 'Generating demo data...';
-        status.className = 'text-sm font-medium text-blue-600 mt-4 block';
         
-        // Call generate demo data API
+        if (status) {
+            status.textContent = 'Generating demo data...';
+            status.className = 'text-sm font-medium text-blue-600 mt-4 block';
+        }
+        
         fetch('/api/demo/generate-data', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
         })
         .then(response => {
-            if (!response.ok) {
-                throw new Error('Generation failed: ' + response.status);
-            }
+            if (!response.ok) throw new Error('Generation failed: ' + response.status);
             return response.json();
         })
         .then(data => {
             console.log('✓ Demo data generated:', data);
             
             if (data.status === 'success') {
-                status.textContent = '✓ ' + data.message;
-                status.className = 'text-sm font-medium text-green-600 mt-4 block';
+                if (status) {
+                    status.textContent = '✓ ' + data.message;
+                    status.className = 'text-sm font-medium text-green-600 mt-4 block';
+                }
                 
-                // Show success alert
-                alert('Success! Generated ' + data.transactions + ' demo transactions.\n\nRefreshing page...');
+                alert('Success! Generated ' + data.transactions + ' demo transactions.\n\nRedirecting to dashboard...');
                 
-                // Reload after 1 second
+                // Redirect to dashboard instead of reload
                 setTimeout(() => {
-                    window.location.reload();
+                    window.location.href = '/';
                 }, 1000);
             } else {
-                status.textContent = '✗ Failed: ' + data.message;
-                status.className = 'text-sm font-medium text-red-600 mt-4 block';
+                if (status) {
+                    status.textContent = '✗ Failed: ' + data.message;
+                    status.className = 'text-sm font-medium text-red-600 mt-4 block';
+                }
             }
         })
         .catch(error => {
             console.error('✗ Demo data generation error:', error);
             
-            status.textContent = '✗ Failed to generate demo data. Please try again.';
-            status.className = 'text-sm font-medium text-red-600 mt-4 block';
+            if (status) {
+                status.textContent = '✗ Failed to generate demo data. Please try again.';
+                status.className = 'text-sm font-medium text-red-600 mt-4 block';
+            }
         })
         .finally(() => {
-            // Re-enable button
             btn.disabled = false;
             btn.classList.remove('opacity-75');
         });

@@ -42,7 +42,7 @@ function setupMonthSelector() {
         const selectedMonth = this.value;
         const selectedAccount = getSelectedAccountFromURL();
         
-        console.log('Month changed to:', selectedMonth);
+        console.log('Month changed to:', selectedMonth, 'Account:', selectedAccount);
         
         // Reload page with new month parameter while keeping account filter
         window.location.href = `/transactions?month=${selectedMonth}&account=${selectedAccount}`;
