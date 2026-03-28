@@ -1,26 +1,22 @@
+"""
+Flask Configuration with Environment Variables
+"""
 import os
-from datetime import timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class Config:
-    """Application configuration with bug fixes"""
+    """Flask application configuration"""
     
-    # Security
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-please-change-in-production'
+    # Flask
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
     
-    # Database - FIXED: Use absolute path to avoid SQLite issues
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'sqlite:///' + os.path.join(basedir, 'fintrack.db')
+    # Database
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///fintrack.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ECHO = False  # Set True for debugging SQL queries
     
-    # Session configuration
-    PERMANENT_SESSION_LIFETIME = timedelta(days=7)
-    SESSION_COOKIE_SECURE = False  # Set True in production with HTTPS
-    SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
-    
-    # Application settings
-    SIMULATION_MODE = True
-    DEMO_USER_EMAIL = 'demo@fintrack.com'
-    DEMO_USER_PASSWORD = 'demo123'
+    # API Configuration
+    API_BASE_URL = os.environ.get('API_BASE_URL', 'http://127.0.0.1:8000')

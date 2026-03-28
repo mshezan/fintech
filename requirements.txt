@@ -1,4 +1,16 @@
+# Flask Core
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
 Werkzeug==3.0.1
+
+# API Communication
+requests==2.31.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# FastAPI Server (for mock bank)
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0

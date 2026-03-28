@@ -14,6 +14,10 @@ from config import Config
 from auth import auth_bp
 from datetime import datetime
 from sqlalchemy import func, extract
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -392,11 +396,26 @@ def transactions():
 @app.route('/accounts')
 @login_required
 def accounts():
-    """Enhanced accounts page with LinkedAccount management"""
+    """Enhanced accounts page with FastAPI integration"""
     try:
-        legacy_accounts = get_user_accounts(current_user)
+        # Get user's existing linked accounts
         linked_accounts = get_linked_accounts(current_user)
+        legacy_accounts = get_user_accounts(current_user)
         
+        # Fetch ALL available accounts from FastAPI
+        all_api_accounts = bank_api.fetch_all_api_accounts()
+        
+        # Filter: Remove already-linked accounts
+        linked_api_ids = [acc.api_account_id for acc in linked_accounts]
+        available_api_accounts = [
+            acc for acc in all_api_accounts 
+            if acc['id'] not in linked_api_ids
+        ]
+        
+        print(f"📊 Available API accounts: {len(available_api_accounts)}")
+        print(f"📊 Linked accounts: {len(linked_accounts)}")
+        
+        # Prepare legacy accounts data
         legacy_accounts_data = []
         for account in legacy_accounts:
             stats = get_account_stats(account)
@@ -404,6 +423,7 @@ def accounts():
             account_info.update(stats)
             legacy_accounts_data.append(account_info)
         
+        # Prepare linked accounts data
         linked_accounts_data = []
         for account in linked_accounts:
             account_info = account.to_dict()
@@ -413,6 +433,7 @@ def accounts():
                              page_name='accounts',
                              accounts=legacy_accounts_data,
                              linked_accounts=linked_accounts_data,
+                             available_api_accounts=available_api_accounts,
                              user_accounts=legacy_accounts)
     
     except Exception as e:
@@ -424,29 +445,57 @@ def accounts():
                              page_name='accounts',
                              accounts=[],
                              linked_accounts=[],
+                             available_api_accounts=[],
                              user_accounts=[])
 
 
 # ============================================================================
-# API ROUTES - LINKED ACCOUNT MANAGEMENT
+# API ROUTES - LINKED ACCOUNT MANAGEMENT (FastAPI Integration)
 # ============================================================================
 
 @app.route('/api/bank/connect', methods=['POST'])
 @login_required
 def bank_connect_new():
-    """Create new LinkedAccount from form data"""
+    """Link a new account from FastAPI server"""
     try:
-        bank_name = request.form.get('bank_name', '').strip()
+        api_account_id = request.form.get('api_account_id')
         account_nickname = request.form.get('account_nickname', '').strip()
         
-        if not bank_name or not account_nickname:
-            flash('Bank name and account nickname are required.', 'error')
+        if not api_account_id or not account_nickname:
+            flash('Account and nickname are required.', 'error')
             return redirect(url_for('accounts'))
         
+        try:
+            api_account_id = int(api_account_id)
+        except ValueError:
+            flash('Invalid account selected.', 'error')
+            return redirect(url_for('accounts'))
+        
+        # Check if already linked
+        existing = LinkedAccount.query.filter_by(
+            user_id=current_user.id,
+            api_account_id=api_account_id
+        ).first()
+        
+        if existing:
+            flash(f'Account is already linked as "{existing.account_nickname}".', 'warning')
+            return redirect(url_for('accounts'))
+        
+        # Fetch account details from FastAPI
+        account_details = bank_api.fetch_account_details(api_account_id)
+        
+        if not account_details:
+            flash('Failed to fetch account details from API.', 'error')
+            return redirect(url_for('accounts'))
+        
+        # Create new linked account
         new_account = LinkedAccount(
             user_id=current_user.id,
-            bank_name=bank_name,
+            api_account_id=api_account_id,
             account_nickname=account_nickname,
+            api_account_name=account_details.get('name'),
+            api_account_type=account_details.get('type'),
+            api_balance=account_details.get('balance'),
             consent_status='active',
             is_active=True,
             creation_date=datetime.utcnow()
@@ -455,12 +504,14 @@ def bank_connect_new():
         db.session.add(new_account)
         db.session.commit()
         
-        flash(f'Successfully linked {account_nickname} ({bank_name})!', 'success')
+        flash(f'Successfully linked {account_nickname}!', 'success')
         return redirect(url_for('accounts'))
     
     except Exception as e:
         db.session.rollback()
         print(f"Error linking account: {e}")
+        import traceback
+        traceback.print_exc()
         flash('Failed to link account. Please try again.', 'error')
         return redirect(url_for('accounts'))
 
@@ -468,7 +519,7 @@ def bank_connect_new():
 @app.route('/api/bank/sync', methods=['POST'])
 @login_required
 def bank_sync_account():
-    """Enhanced sync endpoint - syncs specific LinkedAccount"""
+    """Sync transactions from FastAPI for specific LinkedAccount"""
     try:
         data = request.get_json()
         account_id = data.get('account_id')
@@ -489,39 +540,55 @@ def bank_sync_account():
         
         print(f"🔄 Syncing account: {linked_account.account_nickname}")
         
-        current_date = datetime.now()
+        # Fetch transactions from FastAPI
+        api_transactions = bank_api.fetch_transactions_for_account(linked_account)
+        
+        if not api_transactions:
+            return jsonify({
+                'status': 'success',
+                'new_transactions': 0,
+                'message': 'No new transactions found'
+            })
+        
         total_added = 0
         
-        monthly_transactions = bank_api.generate_monthly_statement(
-            current_user, current_date.year, current_date.month
-        )
-        
-        for tx_data in monthly_transactions:
-            tx_date = datetime.strptime(tx_data['date'], '%Y-%m-%d')
-            
-            existing = Transaction.query.filter_by(
-                account_id=linked_account.id,
-                date=tx_date,
-                description=tx_data['description'],
-                amount=abs(tx_data['amount'])
-            ).first()
-            
-            if not existing:
+        # Process each transaction
+        for tx_data in api_transactions:
+            try:
+                # Parse date
+                tx_date = datetime.strptime(tx_data['date'], '%Y-%m-%d')
+                
+                # Create new transaction with API fields
                 new_transaction = Transaction(
                     user_id=current_user.id,
                     account_id=linked_account.id,
                     date=tx_date,
-                    description=tx_data['description'],
-                    amount=abs(tx_data['amount']),
-                    transaction_type='debit'
+                    description=tx_data['merchant'],  # API merchant -> Flask description
+                    amount=abs(float(tx_data['amount'])),
+                    mode=tx_data.get('mode'),
+                    transaction_type=tx_data.get('type', 'debit'),
+                    narration=tx_data.get('narration')
                 )
                 
                 db.session.add(new_transaction)
                 db.session.flush()
+                
+                # Auto-categorize
                 categorize_transaction(new_transaction)
                 total_added += 1
+                
+            except Exception as e:
+                print(f"⚠️  Error processing transaction: {e}")
+                continue
         
+        # Update last synced time
         linked_account.last_synced = datetime.utcnow()
+        
+        # Update cached balance from API
+        account_details = bank_api.fetch_account_details(linked_account.api_account_id)
+        if account_details:
+            linked_account.api_balance = account_details.get('balance')
+        
         db.session.commit()
         
         print(f"✅ Synced {total_added} transactions")
@@ -668,7 +735,6 @@ def spending_by_category():
         account_type, account_id = parse_account_param(account_param)
         
         if account_type == 'all':
-            # All user's transactions
             spending_data = db.session.query(
                 Category.name,
                 func.sum(Transaction.amount).label('total')
@@ -690,10 +756,9 @@ def spending_by_category():
             ).scalar()
         
         elif account_type == 'legacy':
-            # Legacy BankAccount
             account = BankAccount.query.get(account_id)
             if not account or account.user_id != current_user.id:
-                print(f"❌ Legacy account {account_id} not found or unauthorized")
+                print(f"❌ Legacy account {account_id} not found")
                 return jsonify({'labels': [], 'data': []}), 200
             
             spending_data = db.session.query(
@@ -715,10 +780,9 @@ def spending_by_category():
             ).scalar()
         
         else:  # linked
-            # LinkedAccount
             account = LinkedAccount.query.get(account_id)
             if not account or account.user_id != current_user.id:
-                print(f"❌ Linked account {account_id} not found or unauthorized")
+                print(f"❌ Linked account {account_id} not found")
                 return jsonify({'labels': [], 'data': []}), 200
             
             print(f"✓ Querying LinkedAccount: {account.account_nickname}")
@@ -799,95 +863,19 @@ def categorize_manual(tx_id):
 @app.route('/api/demo/generate-data', methods=['POST'])
 @login_required
 def generate_demo_data():
-    """Generate demo data for all user accounts"""
-    try:
-        legacy_accounts = get_user_accounts(current_user)
-        linked_accounts = get_linked_accounts(current_user)
-        
-        all_accounts = []
-        
-        for acc in legacy_accounts:
-            all_accounts.append(('legacy', acc))
-        
-        for acc in linked_accounts:
-            all_accounts.append(('linked', acc))
-        
-        if not all_accounts:
-            return jsonify({
-                'status': 'error',
-                'message': 'No bank accounts linked. Please link an account first.'
-            }), 400
-        
-        print(f"📊 Generating demo data for {len(all_accounts)} account(s)")
-        
-        Transaction.query.filter_by(user_id=current_user.id).delete()
-        db.session.commit()
-        
-        total_count = 0
-        current_date = datetime.now()
-        
-        for account_type, account in all_accounts:
-            account_name = account.account_name if account_type == 'legacy' else account.account_nickname
-            print(f"  🏦 Generating for: {account_name}")
-            
-            for month_offset in range(3):
-                year = current_date.year
-                month = current_date.month - month_offset
-                
-                if month <= 0:
-                    month += 12
-                    year -= 1
-                
-                monthly_transactions = bank_api.generate_monthly_statement(
-                    current_user, year, month
-                )
-                
-                print(f"    📅 {year}-{month:02d}: {len(monthly_transactions)} transactions")
-                
-                for tx_data in monthly_transactions:
-                    try:
-                        new_transaction = Transaction(
-                            user_id=current_user.id,
-                            date=datetime.strptime(tx_data['date'], '%Y-%m-%d'),
-                            description=tx_data['description'],
-                            amount=abs(float(tx_data['amount'])),
-                            transaction_type='debit'
-                        )
-                        
-                        if account_type == 'legacy':
-                            new_transaction.bank_account_id = account.id
-                        else:
-                            new_transaction.account_id = account.id
-                        
-                        db.session.add(new_transaction)
-                        db.session.flush()
-                        categorize_transaction(new_transaction)
-                        total_count += 1
-                    except Exception as e:
-                        print(f"      ⚠️ Error creating transaction: {e}")
-                        continue
-        
-        db.session.commit()
-        
-        print(f"✅ Successfully generated {total_count} transactions")
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Generated {total_count} demo transactions',
-            'transactions': total_count,
-            'accounts': len(all_accounts)
-        })
-    
-    except Exception as e:
-        db.session.rollback()
-        print(f"❌ Demo data error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to generate demo data: {str(e)}'
-        }), 500
+    """DEPRECATED: Use FastAPI sync instead"""
+    return jsonify({
+        'status': 'error',
+        'message': 'Demo data generation disabled. Use FastAPI sync to get real transactions.'
+    }), 400
 
 
 if __name__ == '__main__':
+    # Check API server on startup
+    print("\n" + "="*60)
+    print("🚀 Starting FinTrack Flask Application")
+    print("="*60)
+    bank_api.check_api_server()
+    print("="*60 + "\n")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)

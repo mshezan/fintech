@@ -1,0 +1,4 @@
+Model,Precision,Recall,F1-Score,AUC-ROC
+Logistic Regression,1.0,1.0,1.0,1.0
+Random Forest,1.0,1.0,1.0,1.0
+Isolation Forest,1.0,1.0,1.0,1.0
