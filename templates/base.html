@@ -66,6 +66,11 @@
                                   {% if page_name == 'accounts' %}bg-indigo-100 text-indigo-700{% else %}text-gray-700 hover:bg-gray-100{% endif %}">
                             💳 Accounts
                         </a>
+                        <a href="{{ url_for('retirement') }}" 
+                           class="px-4 py-2 rounded-md text-sm font-medium transition-colors
+                                  {% if page_name == 'retirement' %}bg-indigo-100 text-indigo-700{% else %}text-gray-700 hover:bg-gray-100{% endif %}">
+                            🏆 Retirement
+                        </a>
                         <div class="border-l border-gray-300 h-6 mx-2"></div>
                         <span class="text-sm text-gray-600 px-2">{{ current_user.email }}</span>
                         <a href="{{ url_for('auth.logout') }}" 
@@ -120,6 +125,7 @@
                     <a href="{{ url_for('dashboard') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">📊 Dashboard</a>
                     <a href="{{ url_for('transactions') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">📋 Transactions</a>
                     <a href="{{ url_for('accounts') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">💳 Accounts</a>
+                    <a href="{{ url_for('retirement') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">🏆 Retirement</a>
                     <div class="border-t border-gray-200 my-2"></div>
                     <div class="px-3 py-2 text-sm text-gray-600">{{ current_user.email }}</div>
                     <a href="{{ url_for('auth.logout') }}" class="block px-3 py-2 rounded-md text-base font-medium text-white bg-red-600 hover:bg-red-700">Logout</a>

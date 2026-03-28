@@ -15,7 +15,8 @@ from auth import auth_bp
 from datetime import datetime
 from sqlalchemy import func, extract
 from dotenv import load_dotenv
-
+from models import RetirementGoal, RetirementPlan, RetirementMilestone
+from retirement_service import get_retirement_analysis
 # Load environment variables
 load_dotenv()
 
@@ -869,6 +870,138 @@ def generate_demo_data():
         'message': 'Demo data generation disabled. Use FastAPI sync to get real transactions.'
     }), 400
 
+@app.route('/retirement', methods=['GET'])
+@login_required
+def retirement():
+    """Main retirement planning page."""
+    try:
+        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
+        plan = RetirementPlan.query.filter_by(user_id=current_user.id).first()
+        milestones = RetirementMilestone.query.filter_by(user_id=current_user.id).all()
+        insights = []
+ 
+        return render_template(
+
+            'retirement.html',
+            page_name='retirement',
+            user_accounts=get_user_accounts(current_user),
+            linked_accounts=get_linked_accounts(current_user),
+            goal=goal,
+            plan=plan,
+            milestones=milestones,
+            insights=insights,
+        )
+    except Exception as e:
+        print(f"Retirement page error: {e}")
+        import traceback; traceback.print_exc()
+        flash('Error loading retirement page.', 'error')
+        return redirect(url_for('dashboard'))
+ 
+ 
+@app.route('/retirement/setup', methods=['POST'])
+@login_required
+def retirement_setup():
+    """Create or update a RetirementGoal."""
+    try:
+        current_age           = int(request.form.get('current_age', 25))
+        retirement_age        = int(request.form.get('retirement_age', 60))
+        target_monthly_income = float(request.form.get('target_monthly_income', 50000))
+        current_monthly_contribution = float(request.form.get('current_monthly_contribution', 0))
+        expected_return       = float(request.form.get('expected_return', 12.0))
+        inflation_rate        = float(request.form.get('inflation_rate', 6.0))
+        life_expectancy       = int(request.form.get('life_expectancy', 85))
+ 
+        # Basic validation
+        if retirement_age <= current_age:
+            flash('Retirement age must be greater than your current age.', 'error')
+            return redirect(url_for('retirement'))
+        if life_expectancy <= retirement_age:
+            flash('Life expectancy must be greater than retirement age.', 'error')
+            return redirect(url_for('retirement'))
+ 
+        # Upsert goal
+        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
+        if not goal:
+            goal = RetirementGoal(user_id=current_user.id)
+            db.session.add(goal)
+ 
+        goal.current_age                  = current_age
+        goal.retirement_age               = retirement_age
+        goal.target_monthly_income        = target_monthly_income
+        goal.current_monthly_contribution = current_monthly_contribution
+        goal.expected_return              = expected_return
+        goal.inflation_rate               = inflation_rate
+        goal.life_expectancy              = life_expectancy
+        goal.updated_at                   = datetime.utcnow()
+        db.session.commit()
+ 
+        # Calculate + save plan
+        calc = calculate_retirement_plan(goal)
+        plan = save_retirement_plan(current_user.id, goal, calc)
+ 
+        # Check milestones
+        check_and_award_milestones(current_user.id, goal, plan)
+ 
+        flash('Retirement goal updated! Here\'s your personalised plan. 🎯', 'success')
+        return redirect(url_for('retirement'))
+ 
+    except Exception as e:
+        db.session.rollback()
+        print(f"Retirement setup error: {e}")
+        import traceback; traceback.print_exc()
+        flash('Failed to save retirement goal. Please try again.', 'error')
+        return redirect(url_for('retirement'))
+ 
+ 
+@app.route('/api/retirement/simulate', methods=['POST'])
+@login_required
+def retirement_simulate():
+    """
+    API: run a what-if simulation without saving.
+    Body: { monthly_investment: float, retire_age: int }
+    """
+    try:
+        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
+        if not goal:
+            return jsonify({'error': 'No retirement goal set'}), 404
+ 
+        data = request.get_json()
+        monthly_investment = float(data.get('monthly_investment', goal.current_monthly_contribution))
+        retire_age = int(data.get('retire_age', goal.retirement_age))
+ 
+        if retire_age <= goal.current_age:
+            return jsonify({'error': 'Retirement age must be greater than current age'}), 400
+ 
+        result = simulate_scenario(goal, monthly_investment, retire_age)
+        return jsonify(result)
+ 
+    except Exception as e:
+        print(f"Simulation error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/retirement/analysis', methods=['GET'])
+@login_required
+def retirement_analysis():
+    """
+    NEW: Data-driven retirement intelligence API.
+    Returns full JSON: finances, insights, portfolios.
+    """
+    try:
+        analysis = get_retirement_analysis(current_user.id)
+        return jsonify(analysis)
+    except Exception as e:
+        print(f"Retirement analysis error: {e}")
+        import traceback; traceback.print_exc()
+        return jsonify({'error': 'Analysis failed - sync transactions first'}), 500
+
+@login_required
+def generate_demo_data():
+    """DEPRECATED: Use FastAPI sync instead"""
+    return jsonify({
+        'status': 'error',
+        'message': 'Demo data generation disabled. Use FastAPI sync to get real transactions.'
+    }), 400
+
 
 if __name__ == '__main__':
     # Check API server on startup
@@ -879,3 +1012,113 @@ if __name__ == '__main__':
     print("="*60 + "\n")
     
     app.run(debug=True, host='0.0.0.0', port=5000)
+@app.route('/retirement', methods=['GET'])
+@login_required
+def retirement():
+    """Main retirement planning page."""
+    try:
+        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
+        plan = RetirementPlan.query.filter_by(user_id=current_user.id).first()
+        milestones = RetirementMilestone.query.filter_by(user_id=current_user.id).all()
+        insights = []
+ 
+        if goal and plan:
+            insights = get_spending_insights(current_user.id, goal)
+ 
+        return render_template(
+            'retirement.html',
+            page_name='retirement',
+            user_accounts=get_user_accounts(current_user),
+            linked_accounts=get_linked_accounts(current_user),
+            goal=goal,
+            plan=plan,
+            milestones=milestones,
+            insights=insights,
+        )
+    except Exception as e:
+        print(f"Retirement page error: {e}")
+        import traceback; traceback.print_exc()
+        flash('Error loading retirement page.', 'error')
+        return redirect(url_for('dashboard'))
+ 
+ 
+@app.route('/retirement/setup', methods=['POST'])
+@login_required
+def retirement_setup():
+    """Create or update a RetirementGoal."""
+    try:
+        current_age           = int(request.form.get('current_age', 25))
+        retirement_age        = int(request.form.get('retirement_age', 60))
+        target_monthly_income = float(request.form.get('target_monthly_income', 50000))
+        current_monthly_contribution = float(request.form.get('current_monthly_contribution', 0))
+        expected_return       = float(request.form.get('expected_return', 12.0))
+        inflation_rate        = float(request.form.get('inflation_rate', 6.0))
+        life_expectancy       = int(request.form.get('life_expectancy', 85))
+ 
+        # Basic validation
+        if retirement_age <= current_age:
+            flash('Retirement age must be greater than your current age.', 'error')
+            return redirect(url_for('retirement'))
+        if life_expectancy <= retirement_age:
+            flash('Life expectancy must be greater than retirement age.', 'error')
+            return redirect(url_for('retirement'))
+ 
+        # Upsert goal
+        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
+        if not goal:
+            goal = RetirementGoal(user_id=current_user.id)
+            db.session.add(goal)
+ 
+        goal.current_age                  = current_age
+        goal.retirement_age               = retirement_age
+        goal.target_monthly_income        = target_monthly_income
+        goal.current_monthly_contribution = current_monthly_contribution
+        goal.expected_return              = expected_return
+        goal.inflation_rate               = inflation_rate
+        goal.life_expectancy              = life_expectancy
+        goal.updated_at                   = datetime.utcnow()
+        db.session.commit()
+ 
+        # Calculate + save plan
+        calc = calculate_retirement_plan(goal)
+        plan = save_retirement_plan(current_user.id, goal, calc)
+ 
+        # Check milestones
+        check_and_award_milestones(current_user.id, goal, plan)
+ 
+        flash('Retirement goal updated! Here\'s your personalised plan. 🎯', 'success')
+        return redirect(url_for('retirement'))
+ 
+    except Exception as e:
+        db.session.rollback()
+        print(f"Retirement setup error: {e}")
+        import traceback; traceback.print_exc()
+        flash('Failed to save retirement goal. Please try again.', 'error')
+        return redirect(url_for('retirement'))
+ 
+ 
+@app.route('/api/retirement/simulate', methods=['POST'])
+@login_required
+def retirement_simulate():
+    """
+    API: run a what-if simulation without saving.
+    Body: { monthly_investment: float, retire_age: int }
+    """
+    try:
+        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
+        if not goal:
+            return jsonify({'error': 'No retirement goal set'}), 404
+ 
+        data = request.get_json()
+        monthly_investment = float(data.get('monthly_investment', goal.current_monthly_contribution))
+        retire_age = int(data.get('retire_age', goal.retirement_age))
+ 
+        if retire_age <= goal.current_age:
+            return jsonify({'error': 'Retirement age must be greater than current age'}), 400
+ 
+        result = simulate_scenario(goal, monthly_investment, retire_age)
+        return jsonify(result)
+ 
+    except Exception as e:
+        print(f"Simulation error: {e}")
+        return jsonify({'error': str(e)}), 500

@@ -179,3 +179,84 @@ class Transaction(db.Model):
             'linked_account': self.linked_account.account_nickname if self.linked_account else None,
             'account_id': self.account_id or self.bank_account_id
         }
+class RetirementGoal(db.Model):
+    """User's retirement planning goal"""
+    __tablename__ = 'retirement_goals'
+ 
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+ 
+    current_age = db.Column(db.Integer, nullable=False)
+    retirement_age = db.Column(db.Integer, nullable=False, default=60)
+    target_monthly_income = db.Column(db.Numeric(12, 2), nullable=False)   # desired monthly income post-retirement
+    current_monthly_contribution = db.Column(db.Numeric(12, 2), default=0) # amount already saving/investing per month
+    expected_return = db.Column(db.Float, default=12.0)    # annual % return
+    inflation_rate = db.Column(db.Float, default=6.0)      # annual % inflation
+    life_expectancy = db.Column(db.Integer, default=85)    # years expected to live
+ 
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+ 
+    plan = db.relationship('RetirementPlan', backref='goal', uselist=False, cascade='all, delete-orphan')
+    milestones = db.relationship('RetirementMilestone', backref='goal', lazy=True, cascade='all, delete-orphan')
+ 
+    def __repr__(self):
+        return f'<RetirementGoal user={self.user_id} retire_at={self.retirement_age}>'
+ 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'current_age': self.current_age,
+            'retirement_age': self.retirement_age,
+            'target_monthly_income': float(self.target_monthly_income),
+            'current_monthly_contribution': float(self.current_monthly_contribution),
+            'expected_return': self.expected_return,
+            'inflation_rate': self.inflation_rate,
+            'life_expectancy': self.life_expectancy,
+        }
+ 
+ 
+class RetirementPlan(db.Model):
+    """Calculated retirement plan (updated on every recalculation)"""
+    __tablename__ = 'retirement_plans'
+ 
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    goal_id = db.Column(db.Integer, db.ForeignKey('retirement_goals.id'), nullable=False)
+ 
+    target_corpus = db.Column(db.Numeric(15, 2), nullable=False)           # total money needed
+    projected_corpus = db.Column(db.Numeric(15, 2), nullable=False)        # corpus if current savings continue
+    required_monthly_contribution = db.Column(db.Numeric(12, 2), nullable=False)
+    readiness_score = db.Column(db.Integer, default=0)   # 0–100
+    years_to_retirement = db.Column(db.Integer)
+ 
+    last_calculated = db.Column(db.DateTime, default=datetime.utcnow)
+ 
+    def __repr__(self):
+        return f'<RetirementPlan user={self.user_id} score={self.readiness_score}>'
+ 
+    def to_dict(self):
+        return {
+            'target_corpus': float(self.target_corpus),
+            'projected_corpus': float(self.projected_corpus),
+            'required_monthly_contribution': float(self.required_monthly_contribution),
+            'readiness_score': self.readiness_score,
+            'years_to_retirement': self.years_to_retirement,
+            'last_calculated': self.last_calculated.isoformat(),
+        }
+ 
+ 
+class RetirementMilestone(db.Model):
+    """Gamification milestones for retirement journey"""
+    __tablename__ = 'retirement_milestones'
+ 
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    goal_id = db.Column(db.Integer, db.ForeignKey('retirement_goals.id'), nullable=False)
+ 
+    milestone_key = db.Column(db.String(100), nullable=False)   # e.g. 'first_10k', 'score_50'
+    milestone_label = db.Column(db.String(255), nullable=False)
+    achieved_at = db.Column(db.DateTime, default=datetime.utcnow)
+ 
+    def __repr__(self):
+        return f'<RetirementMilestone {self.milestone_key}>'
