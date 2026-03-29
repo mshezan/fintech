@@ -1,22 +1,45 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+import re
+from typing import Optional
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, current_app
 from flask_login import LoginManager, login_required, current_user
-from models import db, User, BankAccount, LinkedAccount, Transaction, Category
+from sqlalchemy.exc import IntegrityError
+
+from models import (
+    db,
+    User,
+    BankAccount,
+    LinkedAccount,
+    Transaction,
+    Category,
+    RetirementGoal,
+    RetirementPlan,
+    RetirementMilestone,
+)
 from services import (
-    categorize_transaction, 
+    categorize_transaction,
     initialize_categories,
+    initialize_banks,
+    get_or_create_bank_by_name,
     get_user_accounts,
     get_active_account,
     set_active_account,
-    get_account_stats
+    get_account_stats,
 )
 import bank_api
 from config import Config
 from auth import auth_bp
 from datetime import datetime
-from sqlalchemy import func, extract
+from sqlalchemy import extract, func, or_, text
 from dotenv import load_dotenv
-from models import RetirementGoal, RetirementPlan, RetirementMilestone
-from retirement_service import get_retirement_analysis
+from retirement_service import (
+    get_retirement_analysis,
+    calculate_retirement_plan,
+    save_retirement_plan,
+    check_and_award_milestones,
+    simulate_scenario,
+    get_spending_insights,
+)
 # Load environment variables
 load_dotenv()
 
@@ -30,6 +53,14 @@ login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Please log in to access this page.'
 login_manager.login_message_category = 'info'
+
+
+def _debit_only_filter():
+    """Match retirement analytics: outflows are debit or unset type (legacy rows)."""
+    return or_(
+        Transaction.transaction_type == "debit",
+        Transaction.transaction_type.is_(None),
+    )
 
 
 @login_manager.user_loader
@@ -63,12 +94,148 @@ def internal_error(error):
     if current_user.is_authenticated:
         flash('An internal error occurred. Please try again.', 'error')
         return redirect(url_for('dashboard'))
-    return jsonify({'error': 'Internal server error'}), 500
+    return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
 
 
-with app.app_context():
-    db.create_all()
-    initialize_categories()
+def _ensure_sqlite_user_columns():
+    """ALTER TABLE for SQLite DBs created before identity_id / full_name existed."""
+    if db.engine.dialect.name != "sqlite":
+        return
+    with db.engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "identity_id" not in col_names:
+            conn.execute(text("ALTER TABLE users ADD COLUMN identity_id VARCHAR(64)"))
+        if "full_name" not in col_names:
+            conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(255)"))
+    with db.engine.begin() as conn:
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_users_identity_id ON users (identity_id)")
+        )
+
+
+def _ensure_sqlite_linked_account_columns():
+    """ALTER TABLE for SQLite DBs created before bank_id / masked_account_number."""
+    if db.engine.dialect.name != "sqlite":
+        return
+    with db.engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(linked_accounts)")).fetchall()
+        if not rows:
+            return
+        col_names = {r[1] for r in rows}
+        if "bank_id" not in col_names:
+            conn.execute(text("ALTER TABLE linked_accounts ADD COLUMN bank_id INTEGER"))
+        if "masked_account_number" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE linked_accounts ADD COLUMN masked_account_number VARCHAR(32)"
+                )
+            )
+        if "api_link_valid" not in col_names:
+            conn.execute(
+                text("ALTER TABLE linked_accounts ADD COLUMN api_link_valid INTEGER DEFAULT 1")
+            )
+
+
+def _ensure_sqlite_transaction_columns():
+    """ALTER TABLE for SQLite DBs missing linked-import / API columns on transactions."""
+    if db.engine.dialect.name != "sqlite":
+        return
+    with db.engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(transactions)")).fetchall()
+        if not rows:
+            return
+        col_names = {r[1] for r in rows}
+        if "mode" not in col_names:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN mode VARCHAR(50)"))
+        if "transaction_type" not in col_names:
+            conn.execute(
+                text("ALTER TABLE transactions ADD COLUMN transaction_type VARCHAR(50)")
+            )
+        if "narration" not in col_names:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN narration VARCHAR(500)"))
+        if "transaction_hash" not in col_names:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN transaction_hash VARCHAR(64)"))
+    with db.engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_transactions_transaction_hash "
+                "ON transactions (transaction_hash)"
+            )
+        )
+
+
+def normalize_identity_id(raw: str):
+    """PAN-like: 5–32 alphanumeric, uppercase (aligned with mock bank)."""
+    if not raw:
+        return None
+    s = str(raw).strip().upper()
+    if len(s) < 5 or len(s) > 32 or not re.match(r"^[A-Z0-9]+$", s):
+        return None
+    return s
+
+
+def enforce_identity_match(user: User, requested_norm: Optional[str]) -> tuple[bool, Optional[str]]:
+    """
+    One user = one identity_id. Reject only when the client sends a non-empty identity
+    that differs from the one stored on the profile (409 scenarios).
+    """
+    if requested_norm and user.identity_id and requested_norm != user.identity_id:
+        return (
+            False,
+            'This profile is already linked to a different identity. Sign in with the correct identity or clear linked data in development.',
+        )
+    return True, None
+
+
+def resolve_identity_norm(user: User, identity_raw: str) -> Optional[str]:
+    """Prefer explicit form/query value; otherwise use the identity already stored on the user."""
+    if identity_raw and str(identity_raw).strip():
+        return normalize_identity_id(str(identity_raw).strip())
+    return normalize_identity_id((user.identity_id or '').strip()) if user.identity_id else None
+
+
+def _catalog_api_account_ids(bank_payload: dict) -> set:
+    """Flatten API account ids from a successful fetch_accounts_by_identity response."""
+    ids = set()
+    for bank in bank_payload.get("banks") or []:
+        for acc in bank.get("accounts") or []:
+            if isinstance(acc, dict) and acc.get("id") is not None:
+                try:
+                    ids.add(int(acc["id"]))
+                except (TypeError, ValueError):
+                    continue
+    return ids
+
+
+def _repair_identity_consistency():
+    """
+    One-time alignment after startup: holder name + linked account display names match bank for identity.
+    """
+    try:
+        users = User.query.filter(User.identity_id.isnot(None)).all()
+        for u in users:
+            norm = normalize_identity_id((u.identity_id or "").strip())
+            if not norm:
+                continue
+            data = bank_api.fetch_accounts_by_identity(norm)
+            if data.get("status") != "ok":
+                continue
+            holder = (data.get("holder_name") or "").strip()
+            if holder:
+                u.full_name = holder
+            allowed = _catalog_api_account_ids(data)
+            for la in list(u.linked_accounts):
+                if la.api_account_id not in allowed:
+                    la.api_link_valid = False
+                    continue
+                la.api_link_valid = True
+                if holder and (la.api_account_name or "").strip() != holder:
+                    la.api_account_name = holder
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.warning("identity repair skipped: %s", e)
 
 
 # ============================================================================
@@ -78,6 +245,213 @@ with app.app_context():
 def get_linked_accounts(user):
     """Get all linked accounts for a user, ordered by creation date"""
     return LinkedAccount.query.filter_by(user_id=user.id).order_by(LinkedAccount.creation_date.asc()).all()
+
+
+RECONNECT_LINK_MSG = "This account needs to be reconnected."
+
+
+def _refresh_linked_accounts_state(user: User) -> None:
+    """Reconcile api_link_valid, balances, and holder name from bank; does not commit."""
+    norm = normalize_identity_id((user.identity_id or "").strip())
+    allowed: Optional[set] = None
+    catalog_ok = False
+    holder = ""
+    if norm:
+        data = bank_api.fetch_accounts_by_identity(norm)
+        if data.get("status") == "ok":
+            allowed = _catalog_api_account_ids(data)
+            catalog_ok = True
+            holder = (data.get("holder_name") or "").strip()
+            if holder:
+                user.full_name = holder
+
+    for la in get_linked_accounts(user):
+        if catalog_ok and allowed is not None and la.api_account_id not in allowed:
+            la.api_link_valid = False
+            if holder:
+                la.api_account_name = holder
+            continue
+        det, err = bank_api.fetch_account_details_result(la.api_account_id)
+        if err == "not_found":
+            la.api_link_valid = False
+        elif err == "transport_error":
+            pass
+        elif det is not None:
+            la.api_link_valid = True
+        else:
+            la.api_link_valid = False
+        if det:
+            la.api_balance = det.get("balance")
+        if holder:
+            la.api_account_name = holder
+
+
+def _apply_bank_holder_name_to_linked(user: User) -> None:
+    """Set user.full_name and every linked account api_account_name from bank catalog."""
+    norm = normalize_identity_id((user.identity_id or "").strip())
+    if not norm:
+        return
+    data = bank_api.fetch_accounts_by_identity(norm)
+    if data.get("status") != "ok":
+        return
+    holder = (data.get("holder_name") or "").strip()
+    if not holder:
+        return
+    user.full_name = holder
+    for la in get_linked_accounts(user):
+        la.api_account_name = holder
+
+
+def _sync_linked_account_transactions(user, linked_account: LinkedAccount) -> dict:
+    """
+    Pull from bank API and insert new transactions. Does not commit.
+    Returns dict with keys: added, skipped_duplicates, skipped_invalid, fetched_count, error (str or None).
+    """
+    out = {
+        "added": 0,
+        "skipped_duplicates": 0,
+        "skipped_invalid": 0,
+        "fetched_count": 0,
+        "error": None,
+    }
+
+    if linked_account.api_link_valid is False:
+        out["error"] = RECONNECT_LINK_MSG
+        current_app.logger.warning(
+            "sync: skipped invalid link linked_account_id=%s",
+            linked_account.id,
+        )
+        return out
+
+    api_transactions, fetch_err = bank_api.fetch_transactions_for_account(linked_account)
+    if fetch_err:
+        out["error"] = str(fetch_err)
+        fe = str(fetch_err).lower()
+        if "404" in fe or "not found" in fe:
+            linked_account.api_link_valid = False
+        current_app.logger.warning(
+            "sync: fetch failed linked_account_id=%s error=%s",
+            linked_account.id,
+            fetch_err,
+        )
+        return out
+
+    if not isinstance(api_transactions, list):
+        out["error"] = "Invalid transaction response"
+        current_app.logger.warning(
+            "sync: invalid payload type linked_account_id=%s type=%s",
+            linked_account.id,
+            type(api_transactions).__name__,
+        )
+        return out
+
+    out["fetched_count"] = len(api_transactions)
+    log = current_app.logger
+    log.info(
+        "sync: linked_account_id=%s fetched_transactions=%s",
+        linked_account.id,
+        out["fetched_count"],
+    )
+
+    for tx_data in api_transactions:
+        if not isinstance(tx_data, dict):
+            out["skipped_invalid"] += 1
+            log.warning("sync: skipped non-dict transaction row for linked_account_id=%s", linked_account.id)
+            continue
+        try:
+            tx_date = datetime.strptime(tx_data["date"], "%Y-%m-%d")
+        except (KeyError, ValueError, TypeError) as e:
+            out["skipped_invalid"] += 1
+            log.warning("sync: skipped malformed date for linked_account_id=%s: %s", linked_account.id, e)
+            continue
+
+        desc = bank_api.transaction_description(tx_data)
+        amt = bank_api.transaction_amount(tx_data)
+        if amt <= 0:
+            out["skipped_invalid"] += 1
+            log.warning(
+                "sync: skipped non-positive amount for linked_account_id=%s amount=%s",
+                linked_account.id,
+                amt,
+            )
+            continue
+
+        tx_hash = bank_api.linked_transaction_import_hash(linked_account.id, tx_date, amt, desc)
+
+        try:
+            with db.session.begin_nested():
+                new_transaction = Transaction(
+                    user_id=user.id,
+                    account_id=linked_account.id,
+                    date=tx_date,
+                    description=desc,
+                    amount=amt,
+                    mode=tx_data.get("mode"),
+                    transaction_type=tx_data.get("type", "debit"),
+                    narration=tx_data.get("narration"),
+                    transaction_hash=tx_hash,
+                )
+                db.session.add(new_transaction)
+                db.session.flush()
+                categorize_transaction(new_transaction)
+            out["added"] += 1
+        except IntegrityError:
+            out["skipped_duplicates"] += 1
+            continue
+        except Exception as e:
+            out["skipped_invalid"] += 1
+            log.warning(
+                "sync: failed to persist transaction linked_account_id=%s: %s",
+                linked_account.id,
+                e,
+                exc_info=True,
+            )
+            continue
+
+    if out["added"] > 0:
+        linked_account.last_synced = datetime.utcnow()
+
+    det, err = bank_api.fetch_account_details_result(linked_account.api_account_id)
+    if det:
+        linked_account.api_balance = det.get("balance")
+    if err == "not_found":
+        linked_account.api_link_valid = False
+
+    log.info(
+        "auto-sync: linked_account_id=%s fetched_transactions=%s inserted_transactions=%s",
+        linked_account.id,
+        out["fetched_count"],
+        out["added"],
+    )
+    log.info(
+        "sync: linked_account_id=%s inserted=%s skipped_duplicates=%s skipped_invalid=%s",
+        linked_account.id,
+        out["added"],
+        out["skipped_duplicates"],
+        out["skipped_invalid"],
+    )
+    return out
+
+
+def _filter_unlinked_banks(bank_payload: dict, user: User):
+    """From a successful bank API payload, keep only accounts this user has not linked."""
+    linked_ids = {a.api_account_id for a in get_linked_accounts(user)}
+    banks_out = []
+    for bank in bank_payload.get("banks") or []:
+        bname = bank.get("name") or ""
+        avail = []
+        for acc in bank.get("accounts") or []:
+            if not isinstance(acc, dict):
+                continue
+            aid = acc.get("id")
+            if aid is None or aid in linked_ids:
+                continue
+            row = dict(acc)
+            row["bank_name"] = row.get("bank_name") or bname
+            avail.append(row)
+        if avail:
+            banks_out.append({"name": bname, "accounts": avail})
+    return banks_out, linked_ids
 
 
 def parse_account_param(account_param):
@@ -203,7 +577,8 @@ def dashboard():
             ).filter(
                 Transaction.user_id == current_user.id,
                 extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
+                extract('month', Transaction.date) == month,
+                _debit_only_filter(),
             ).scalar() or 0
             
             transaction_count = Transaction.query.filter(
@@ -218,7 +593,8 @@ def dashboard():
             ).join(Transaction).filter(
                 Transaction.user_id == current_user.id,
                 extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
+                extract('month', Transaction.date) == month,
+                _debit_only_filter(),
             ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
         
         elif account_type == 'legacy':
@@ -227,7 +603,8 @@ def dashboard():
             ).filter(
                 Transaction.bank_account_id == account_id,
                 extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
+                extract('month', Transaction.date) == month,
+                _debit_only_filter(),
             ).scalar() or 0
             
             transaction_count = Transaction.query.filter(
@@ -242,7 +619,8 @@ def dashboard():
             ).join(Transaction).filter(
                 Transaction.bank_account_id == account_id,
                 extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
+                extract('month', Transaction.date) == month,
+                _debit_only_filter(),
             ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
         
         else:  # linked
@@ -251,7 +629,8 @@ def dashboard():
             ).filter(
                 Transaction.account_id == account_id,
                 extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
+                extract('month', Transaction.date) == month,
+                _debit_only_filter(),
             ).scalar() or 0
             
             transaction_count = Transaction.query.filter(
@@ -266,7 +645,8 @@ def dashboard():
             ).join(Transaction).filter(
                 Transaction.account_id == account_id,
                 extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
+                extract('month', Transaction.date) == month,
+                _debit_only_filter(),
             ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
         
         top_category_name = top_category[0] if top_category else 'N/A'
@@ -399,44 +779,34 @@ def transactions():
 def accounts():
     """Enhanced accounts page with FastAPI integration"""
     try:
-        # Get user's existing linked accounts
+        try:
+            _refresh_linked_accounts_state(current_user)
+            db.session.commit()
+        except Exception as refresh_err:
+            db.session.rollback()
+            current_app.logger.warning("accounts linked refresh: %s", refresh_err)
+
         linked_accounts = get_linked_accounts(current_user)
         legacy_accounts = get_user_accounts(current_user)
-        
-        # Fetch ALL available accounts from FastAPI
-        all_api_accounts = bank_api.fetch_all_api_accounts()
-        
-        # Filter: Remove already-linked accounts
-        linked_api_ids = [acc.api_account_id for acc in linked_accounts]
-        available_api_accounts = [
-            acc for acc in all_api_accounts 
-            if acc['id'] not in linked_api_ids
-        ]
-        
-        print(f"📊 Available API accounts: {len(available_api_accounts)}")
-        print(f"📊 Linked accounts: {len(linked_accounts)}")
-        
-        # Prepare legacy accounts data
+
         legacy_accounts_data = []
         for account in legacy_accounts:
             stats = get_account_stats(account)
             account_info = account.to_dict()
             account_info.update(stats)
             legacy_accounts_data.append(account_info)
-        
-        # Prepare linked accounts data
+
         linked_accounts_data = []
         for account in linked_accounts:
             account_info = account.to_dict()
             linked_accounts_data.append(account_info)
-        
+
         return render_template('accounts.html',
                              page_name='accounts',
                              accounts=legacy_accounts_data,
                              linked_accounts=linked_accounts_data,
-                             available_api_accounts=available_api_accounts,
                              user_accounts=legacy_accounts)
-    
+
     except Exception as e:
         print(f"Accounts error: {e}")
         import traceback
@@ -446,8 +816,95 @@ def accounts():
                              page_name='accounts',
                              accounts=[],
                              linked_accounts=[],
-                             available_api_accounts=[],
                              user_accounts=[])
+
+
+@app.route('/api/bank/discover', methods=['GET'])
+@login_required
+def bank_discover():
+    """
+    Identity-based discovery: saves identity on the user and returns banks with linkable accounts.
+    """
+    try:
+        identity_raw = request.args.get('identity_id', '').strip()
+        norm = normalize_identity_id(identity_raw)
+        if not norm:
+            return jsonify({'status': 'error', 'message': 'Invalid identity format'}), 400
+
+        ok_id, id_msg = enforce_identity_match(current_user, norm)
+        if not ok_id:
+            return jsonify({'status': 'error', 'message': id_msg}), 409
+
+        data = bank_api.fetch_accounts_by_identity(norm)
+        if data.get('status') != 'ok':
+            return jsonify({
+                'status': 'error',
+                'message': data.get('message', 'Bank unreachable'),
+            }), 503
+
+        current_user.identity_id = norm
+        if data.get('holder_name'):
+            current_user.full_name = data.get('holder_name')
+        db.session.commit()
+
+        banks_out, linked_ids = _filter_unlinked_banks(data, current_user)
+        payload = {
+            'status': 'success',
+            'message': 'Accounts loaded',
+            'holder_name': data.get('holder_name'),
+            'identity_id': norm,
+            'banks': banks_out,
+        }
+        if not banks_out:
+            payload['scenario'] = 'all_linked' if linked_ids else 'empty_source'
+        return jsonify(payload)
+    except Exception as e:
+        db.session.rollback()
+        print(f"discover error: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': 'We could not load your accounts. Please try again.',
+        }), 500
+
+
+@app.route('/api/bank/available-for-link')
+@login_required
+def bank_available_for_link():
+    """
+    Backward-compatible shim: same as discover when identity_id query or saved user identity is present.
+    """
+    query_raw = request.args.get('identity_id', '').strip()
+    if query_raw:
+        norm = normalize_identity_id(query_raw)
+        if not norm:
+            return jsonify({'status': 'error', 'message': 'Invalid identity format'}), 400
+        ok_id, id_msg = enforce_identity_match(current_user, norm)
+        if not ok_id:
+            return jsonify({'status': 'error', 'message': id_msg}), 409
+    else:
+        norm = normalize_identity_id((current_user.identity_id or '').strip())
+        if not norm:
+            return jsonify({
+                'status': 'error',
+                'message': 'identity_id is required. Enter your PAN or ID and fetch accounts first.',
+            }), 400
+
+    data = bank_api.fetch_accounts_by_identity(norm)
+    if data.get('status') != 'ok':
+        return jsonify({
+            'status': 'error',
+            'message': data.get('message', 'Bank unreachable'),
+        }), 503
+    banks_out, linked_ids = _filter_unlinked_banks(data, current_user)
+    payload = {
+        'status': 'success',
+        'message': 'Accounts loaded',
+        'holder_name': data.get('holder_name'),
+        'banks': banks_out,
+    }
+    if not banks_out:
+        payload['scenario'] = 'all_linked' if linked_ids else 'empty_source'
+    return jsonify(payload)
 
 
 # ============================================================================
@@ -457,158 +914,297 @@ def accounts():
 @app.route('/api/bank/connect', methods=['POST'])
 @login_required
 def bank_connect_new():
-    """Link a new account from FastAPI server"""
+    """Link a new account from mock bank (identity + bank + API account id)."""
     try:
         api_account_id = request.form.get('api_account_id')
         account_nickname = request.form.get('account_nickname', '').strip()
-        
+        identity_raw = request.form.get('identity_id', '').strip()
+        bank_name = request.form.get('bank_name', '').strip()
+        masked = request.form.get('masked_account_number', '').strip()
+
         if not api_account_id or not account_nickname:
-            flash('Account and nickname are required.', 'error')
+            flash('Please choose an account and enter a name.', 'error')
             return redirect(url_for('accounts'))
-        
+
         try:
             api_account_id = int(api_account_id)
         except ValueError:
-            flash('Invalid account selected.', 'error')
+            flash('That account could not be used. Please pick another one.', 'error')
             return redirect(url_for('accounts'))
-        
-        # Check if already linked
+
+        norm = resolve_identity_norm(current_user, identity_raw)
+        if not norm:
+            flash('Identity is required. Fetch accounts with your PAN or ID first.', 'error')
+            return redirect(url_for('accounts'))
+
+        ok_id, id_msg = enforce_identity_match(current_user, norm)
+        if not ok_id:
+            flash(id_msg, 'error')
+            return redirect(url_for('accounts'))
+
+        catalog = bank_api.fetch_accounts_by_identity(norm)
+        if catalog.get("status") != "ok":
+            flash(catalog.get("message", "Could not verify identity with the bank."), 'error')
+            return redirect(url_for('accounts'))
+
+        allowed_ids = _catalog_api_account_ids(catalog)
+        if api_account_id not in allowed_ids:
+            flash('That account does not belong to this identity. Fetch accounts again and pick a listed account.', 'error')
+            return redirect(url_for('accounts'))
+
+        holder_name = (catalog.get("holder_name") or "").strip()
+        current_user.identity_id = norm
+        if holder_name:
+            current_user.full_name = holder_name
+
         existing = LinkedAccount.query.filter_by(
             user_id=current_user.id,
-            api_account_id=api_account_id
+            api_account_id=api_account_id,
         ).first()
-        
         if existing:
             flash(f'Account is already linked as "{existing.account_nickname}".', 'warning')
             return redirect(url_for('accounts'))
-        
-        # Fetch account details from FastAPI
+
         account_details = bank_api.fetch_account_details(api_account_id)
-        
         if not account_details:
-            flash('Failed to fetch account details from API.', 'error')
+            flash('We could not verify that account. Please try again.', 'error')
             return redirect(url_for('accounts'))
-        
-        # Create new linked account
+
+        if not bank_name:
+            bank_name = (account_details.get('bank_name') or '').strip()
+
+        bank_row = get_or_create_bank_by_name(bank_name) if bank_name else None
+        if not masked and account_details.get('account_number_masked'):
+            masked = str(account_details.get('account_number_masked'))
+
+        display_holder = holder_name or (account_details.get('name') or "").strip()
         new_account = LinkedAccount(
             user_id=current_user.id,
             api_account_id=api_account_id,
             account_nickname=account_nickname,
-            api_account_name=account_details.get('name'),
+            api_account_name=display_holder or account_details.get('name'),
             api_account_type=account_details.get('type'),
             api_balance=account_details.get('balance'),
+            bank_id=bank_row.id if bank_row else None,
+            masked_account_number=masked or None,
             consent_status='active',
             is_active=True,
-            creation_date=datetime.utcnow()
+            api_link_valid=True,
+            creation_date=datetime.utcnow(),
         )
-        
+
         db.session.add(new_account)
-        db.session.commit()
-        
-        flash(f'Successfully linked {account_nickname}!', 'success')
+        try:
+            db.session.flush()
+        except IntegrityError:
+            db.session.rollback()
+            flash('This bank account is already linked.', 'warning')
+            return redirect(url_for('accounts'))
+
+        sync_result = _sync_linked_account_transactions(current_user, new_account)
+        _apply_bank_holder_name_to_linked(current_user)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash('This bank account is already linked.', 'warning')
+            return redirect(url_for('accounts'))
+        except Exception as sync_commit_err:
+            db.session.rollback()
+            print(f"Error committing after link/sync: {sync_commit_err}")
+            import traceback
+            traceback.print_exc()
+            flash('Account was linked but saving failed. Please try Sync now.', 'error')
+            return redirect(url_for('accounts'))
+
+        flash('Account connected successfully', 'success')
+        if sync_result.get('error'):
+            flash(
+                'Transactions could not be loaded yet: '
+                + str(sync_result['error'])
+                + '. Use Sync now to retry.',
+                'warning',
+            )
         return redirect(url_for('accounts'))
-    
+
     except Exception as e:
         db.session.rollback()
         print(f"Error linking account: {e}")
         import traceback
         traceback.print_exc()
-        flash('Failed to link account. Please try again.', 'error')
+        flash('We could not connect that account. Please try again.', 'error')
         return redirect(url_for('accounts'))
 
 
-@app.route('/api/bank/sync', methods=['POST'])
-@login_required
-def bank_sync_account():
-    """Sync transactions from FastAPI for specific LinkedAccount"""
-    try:
-        data = request.get_json()
-        account_id = data.get('account_id')
-        
-        if not account_id:
+def _perform_linked_accounts_sync():
+    """Shared JSON handler for sync (single account or all). Returns Flask (response, status_code)."""
+    data = request.get_json(silent=True) or {}
+    sync_all = bool(data.get('sync_all'))
+    account_id = data.get('account_id')
+
+    if sync_all:
+        targets = LinkedAccount.query.filter_by(user_id=current_user.id).order_by(
+            LinkedAccount.id.asc()
+        ).all()
+    else:
+        if account_id is None:
             return jsonify({
                 'status': 'error',
-                'message': 'Account ID is required'
+                'message': 'Provide account_id or set sync_all to true',
             }), 400
-        
-        linked_account = LinkedAccount.query.get(account_id)
-        
-        if not linked_account or linked_account.user_id != current_user.id:
-            return jsonify({
-                'status': 'error',
-                'message': 'Account not found or unauthorized'
-            }), 403
-        
-        print(f"🔄 Syncing account: {linked_account.account_nickname}")
-        
-        # Fetch transactions from FastAPI
-        api_transactions = bank_api.fetch_transactions_for_account(linked_account)
-        
-        if not api_transactions:
-            return jsonify({
-                'status': 'success',
-                'new_transactions': 0,
-                'message': 'No new transactions found'
-            })
-        
-        total_added = 0
-        
-        # Process each transaction
-        for tx_data in api_transactions:
-            try:
-                # Parse date
-                tx_date = datetime.strptime(tx_data['date'], '%Y-%m-%d')
-                
-                # Create new transaction with API fields
-                new_transaction = Transaction(
-                    user_id=current_user.id,
-                    account_id=linked_account.id,
-                    date=tx_date,
-                    description=tx_data['merchant'],  # API merchant -> Flask description
-                    amount=abs(float(tx_data['amount'])),
-                    mode=tx_data.get('mode'),
-                    transaction_type=tx_data.get('type', 'debit'),
-                    narration=tx_data.get('narration')
-                )
-                
-                db.session.add(new_transaction)
-                db.session.flush()
-                
-                # Auto-categorize
-                categorize_transaction(new_transaction)
-                total_added += 1
-                
-            except Exception as e:
-                print(f"⚠️  Error processing transaction: {e}")
-                continue
-        
-        # Update last synced time
-        linked_account.last_synced = datetime.utcnow()
-        
-        # Update cached balance from API
-        account_details = bank_api.fetch_account_details(linked_account.api_account_id)
-        if account_details:
-            linked_account.api_balance = account_details.get('balance')
-        
-        db.session.commit()
-        
-        print(f"✅ Synced {total_added} transactions")
-        
+        try:
+            aid = int(account_id)
+        except (TypeError, ValueError):
+            return jsonify({'status': 'error', 'message': 'Invalid account_id'}), 400
+        la = LinkedAccount.query.get(aid)
+        if not la or la.user_id != current_user.id:
+            return jsonify({'status': 'error', 'message': 'Account not found or unauthorized'}), 403
+        targets = [la]
+
+    if not targets:
         return jsonify({
             'status': 'success',
-            'new_transactions': total_added,
-            'message': f'Synced {total_added} new transactions for {linked_account.account_nickname}'
+            'sync_result': 'full_success',
+            'new_transactions': 0,
+            'skipped_duplicates': 0,
+            'synced_accounts': [],
+            'failed_accounts': [],
+            'message': 'No linked accounts to sync',
+        }), 200
+
+    synced_accounts = []
+    failed_accounts = []
+    grand_added = 0
+    grand_skipped = 0
+
+    for la in targets:
+        if la.user_id != current_user.id:
+            failed_accounts.append({
+                'account_id': la.id,
+                'account_nickname': la.account_nickname,
+                'message': 'Unauthorized',
+            })
+            continue
+        if la.api_link_valid is False:
+            failed_accounts.append({
+                'account_id': la.id,
+                'account_nickname': la.account_nickname,
+                'message': RECONNECT_LINK_MSG,
+            })
+            continue
+        result = _sync_linked_account_transactions(current_user, la)
+        if result.get('error'):
+            failed_accounts.append({
+                'account_id': la.id,
+                'account_nickname': la.account_nickname,
+                'message': result['error'],
+            })
+            continue
+        added = int(result.get('added') or 0)
+        skipped = int(result.get('skipped_duplicates') or 0)
+        grand_added += added
+        grand_skipped += skipped
+        synced_accounts.append({
+            'account_id': la.id,
+            'account_nickname': la.account_nickname,
+            'new_transactions': added,
+            'skipped_duplicates': skipped,
         })
-    
+
+    try:
+        _apply_bank_holder_name_to_linked(current_user)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    n_synced = len(synced_accounts)
+    n_failed = len(failed_accounts)
+    multi = len(targets) > 1
+
+    if n_synced == 0 and n_failed > 0:
+        return jsonify({
+            'status': 'error',
+            'sync_result': 'failed',
+            'new_transactions': 0,
+            'skipped_duplicates': 0,
+            'synced_accounts': [],
+            'failed_accounts': failed_accounts,
+            'message': failed_accounts[0]['message'] if n_failed == 1 else 'All account syncs failed',
+        }), 503
+
+    if multi and n_failed > 0:
+        msg = (
+            f'Synced {grand_added} new transaction(s); {n_failed} account(s) failed. '
+            f'{grand_skipped} duplicate(s) skipped.'
+        )
+        return jsonify({
+            'status': 'success',
+            'sync_result': 'partial_success',
+            'partial_success': True,
+            'new_transactions': grand_added,
+            'skipped_duplicates': grand_skipped,
+            'synced_accounts': synced_accounts,
+            'failed_accounts': failed_accounts,
+            'message': msg,
+        }), 200
+
+    if grand_added == 0:
+        msg = (
+            'No new transactions found'
+            if len(targets) == 1
+            else 'No new transactions found for any account'
+        )
+        if grand_skipped:
+            msg = f'No new transactions; {grand_skipped} duplicate(s) skipped'
+    elif len(targets) == 1:
+        msg = f'Synced {grand_added} new transaction(s) for {targets[0].account_nickname}'
+        if grand_skipped:
+            msg += f' ({grand_skipped} duplicate(s) skipped)'
+    else:
+        msg = f'Synced {grand_added} new transaction(s) across {len(targets)} account(s)'
+        if grand_skipped:
+            msg += f'; {grand_skipped} duplicate(s) skipped'
+
+    return jsonify({
+        'status': 'success',
+        'sync_result': 'full_success',
+        'new_transactions': grand_added,
+        'skipped_duplicates': grand_skipped,
+        'synced_accounts': synced_accounts,
+        'failed_accounts': failed_accounts,
+        'message': msg,
+    }), 200
+
+
+@app.route('/api/accounts/sync', methods=['POST'])
+@login_required
+def accounts_sync():
+    """Sync one linked account or all linked accounts for the current user."""
+    try:
+        resp, code = _perform_linked_accounts_sync()
+        return resp, code
     except Exception as e:
         db.session.rollback()
         print(f"Sync error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to sync transactions: {str(e)}'
-        }), 500
+        return jsonify({'status': 'error', 'message': 'Failed to sync transactions'}), 500
+
+
+@app.route('/api/bank/sync', methods=['POST'])
+@login_required
+def bank_sync_account():
+    """Legacy path; same body as POST /api/accounts/sync."""
+    try:
+        resp, code = _perform_linked_accounts_sync()
+        return resp, code
+    except Exception as e:
+        db.session.rollback()
+        print(f"Sync error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': 'Failed to sync transactions'}), 500
 
 
 @app.route('/api/linked-accounts/<int:account_id>/delete', methods=['POST'])
@@ -730,7 +1326,7 @@ def spending_by_category():
             year = datetime.now().year
             month = datetime.now().month
         
-        print(f"📊 Chart API: month={selected_month}, account={account_param}")
+        print(f"Chart API: month={selected_month}, account={account_param}")
         
         # Parse account parameter
         account_type, account_id = parse_account_param(account_param)
@@ -744,7 +1340,8 @@ def spending_by_category():
             ).filter(
                 Transaction.user_id == current_user.id,
                 extract('month', Transaction.date) == month,
-                extract('year', Transaction.date) == year
+                extract('year', Transaction.date) == year,
+                _debit_only_filter(),
             ).group_by(Category.name).all()
             
             uncategorized = db.session.query(
@@ -753,14 +1350,20 @@ def spending_by_category():
                 Transaction.user_id == current_user.id,
                 Transaction.category_id == None,
                 extract('month', Transaction.date) == month,
-                extract('year', Transaction.date) == year
+                extract('year', Transaction.date) == year,
+                _debit_only_filter(),
             ).scalar()
         
         elif account_type == 'legacy':
             account = BankAccount.query.get(account_id)
             if not account or account.user_id != current_user.id:
-                print(f"❌ Legacy account {account_id} not found")
-                return jsonify({'labels': [], 'data': []}), 200
+                print(f"Chart API: legacy account {account_id} not found")
+                return jsonify({
+                    'status': 'success',
+                    'message': 'No data for this account',
+                    'labels': [],
+                    'data': [],
+                }), 200
             
             spending_data = db.session.query(
                 Category.name,
@@ -768,7 +1371,8 @@ def spending_by_category():
             ).join(Transaction).filter(
                 Transaction.bank_account_id == account_id,
                 extract('month', Transaction.date) == month,
-                extract('year', Transaction.date) == year
+                extract('year', Transaction.date) == year,
+                _debit_only_filter(),
             ).group_by(Category.name).all()
             
             uncategorized = db.session.query(
@@ -777,16 +1381,22 @@ def spending_by_category():
                 Transaction.bank_account_id == account_id,
                 Transaction.category_id == None,
                 extract('month', Transaction.date) == month,
-                extract('year', Transaction.date) == year
+                extract('year', Transaction.date) == year,
+                _debit_only_filter(),
             ).scalar()
         
         else:  # linked
             account = LinkedAccount.query.get(account_id)
             if not account or account.user_id != current_user.id:
-                print(f"❌ Linked account {account_id} not found")
-                return jsonify({'labels': [], 'data': []}), 200
+                print(f"Chart API: linked account {account_id} not found")
+                return jsonify({
+                    'status': 'success',
+                    'message': 'No data for this account',
+                    'labels': [],
+                    'data': [],
+                }), 200
             
-            print(f"✓ Querying LinkedAccount: {account.account_nickname}")
+            print(f"Chart API: linked account filter {account.account_nickname}")
             
             spending_data = db.session.query(
                 Category.name,
@@ -794,7 +1404,8 @@ def spending_by_category():
             ).join(Transaction).filter(
                 Transaction.account_id == account_id,
                 extract('month', Transaction.date) == month,
-                extract('year', Transaction.date) == year
+                extract('year', Transaction.date) == year,
+                _debit_only_filter(),
             ).group_by(Category.name).all()
             
             uncategorized = db.session.query(
@@ -803,7 +1414,8 @@ def spending_by_category():
                 Transaction.account_id == account_id,
                 Transaction.category_id == None,
                 extract('month', Transaction.date) == month,
-                extract('year', Transaction.date) == year
+                extract('year', Transaction.date) == year,
+                _debit_only_filter(),
             ).scalar()
         
         labels = [item[0] for item in spending_data]
@@ -813,15 +1425,25 @@ def spending_by_category():
             labels.append('Uncategorized')
             data.append(float(uncategorized))
         
-        print(f"✓ Chart data: {len(labels)} categories, total: {sum(data)}")
+        print(f"Chart API: {len(labels)} categories, total: {sum(data)}")
         
-        return jsonify({'labels': labels, 'data': data})
+        return jsonify({
+            'status': 'success',
+            'message': 'OK',
+            'labels': labels,
+            'data': data,
+        })
     
     except Exception as e:
-        print(f"❌ Chart API error: {e}")
+        print(f"Chart API error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'labels': [], 'data': []}), 200
+        return jsonify({
+            'status': 'error',
+            'message': 'Could not load spending data',
+            'labels': [],
+            'data': [],
+        }), 200
 
 
 @app.route('/api/transactions/<int:tx_id>/categorize', methods=['POST'])
@@ -853,7 +1475,11 @@ def categorize_manual(tx_id):
         transaction.category_id = category_id
         db.session.commit()
         
-        return jsonify({'status': 'success', 'transaction': transaction.to_dict()})
+        return jsonify({
+            'status': 'success',
+            'message': 'Category updated',
+            'transaction': transaction.to_dict(),
+        })
     
     except Exception as e:
         db.session.rollback()
@@ -878,10 +1504,9 @@ def retirement():
         goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
         plan = RetirementPlan.query.filter_by(user_id=current_user.id).first()
         milestones = RetirementMilestone.query.filter_by(user_id=current_user.id).all()
-        insights = []
- 
-        return render_template(
+        insights = get_spending_insights(current_user.id, goal)
 
+        return render_template(
             'retirement.html',
             page_name='retirement',
             user_accounts=get_user_accounts(current_user),
@@ -963,21 +1588,27 @@ def retirement_simulate():
     try:
         goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
         if not goal:
-            return jsonify({'error': 'No retirement goal set'}), 404
+            return jsonify({'status': 'error', 'message': 'No retirement goal set'}), 404
  
-        data = request.get_json()
+        data = request.get_json() or {}
         monthly_investment = float(data.get('monthly_investment', goal.current_monthly_contribution))
         retire_age = int(data.get('retire_age', goal.retirement_age))
  
         if retire_age <= goal.current_age:
-            return jsonify({'error': 'Retirement age must be greater than current age'}), 400
+            return jsonify({
+                'status': 'error',
+                'message': 'Retirement age must be greater than current age',
+            }), 400
  
         result = simulate_scenario(goal, monthly_investment, retire_age)
-        return jsonify(result)
+        payload = dict(result) if isinstance(result, dict) else {'result': result}
+        payload['status'] = 'success'
+        payload['message'] = 'OK'
+        return jsonify(payload)
  
     except Exception as e:
         print(f"Simulation error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/retirement/analysis', methods=['GET'])
 @login_required
@@ -988,137 +1619,73 @@ def retirement_analysis():
     """
     try:
         analysis = get_retirement_analysis(current_user.id)
+        analysis = dict(analysis)
+        analysis['status'] = 'success'
+        analysis.setdefault('message', analysis.get('message'))
         return jsonify(analysis)
     except Exception as e:
         print(f"Retirement analysis error: {e}")
         import traceback; traceback.print_exc()
-        return jsonify({'error': 'Analysis failed - sync transactions first'}), 500
+        return jsonify({
+            'status': 'error',
+            'message': 'Analysis failed — sync transactions first',
+            'has_data': False,
+        }), 500
 
-@login_required
-def generate_demo_data():
-    """DEPRECATED: Use FastAPI sync instead"""
-    return jsonify({
-        'status': 'error',
-        'message': 'Demo data generation disabled. Use FastAPI sync to get real transactions.'
-    }), 400
+
+@app.route('/dev/reset-data', methods=['POST'])
+def dev_reset_data():
+    """
+    Development only: delete users, transactions, bank/linked accounts, retirement rows.
+    Categories are preserved.
+    """
+    if not current_app.config.get('DEBUG'):
+        return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
+    try:
+        Transaction.query.delete()
+        RetirementMilestone.query.delete()
+        RetirementPlan.query.delete()
+        RetirementGoal.query.delete()
+        LinkedAccount.query.delete()
+        BankAccount.query.delete()
+        User.query.delete()
+        db.session.commit()
+        return jsonify(
+            {
+                'status': 'success',
+                'message': 'All user and transaction data cleared (categories preserved).',
+            }
+        )
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+def _init_app_db():
+    with app.app_context():
+        db.create_all()
+        _ensure_sqlite_user_columns()
+        _ensure_sqlite_linked_account_columns()
+        _ensure_sqlite_transaction_columns()
+        initialize_categories()
+        initialize_banks()
+        _repair_identity_consistency()
+
+
+_init_app_db()
 
 
 if __name__ == '__main__':
     # Check API server on startup
     print("\n" + "="*60)
-    print("🚀 Starting FinTrack Flask Application")
+    print("Starting FinTrack Flask Application")
     print("="*60)
     bank_api.check_api_server()
     print("="*60 + "\n")
-    
+
     app.run(debug=True, host='0.0.0.0', port=5000)
-@app.route('/retirement', methods=['GET'])
-@login_required
-def retirement():
-    """Main retirement planning page."""
-    try:
-        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
-        plan = RetirementPlan.query.filter_by(user_id=current_user.id).first()
-        milestones = RetirementMilestone.query.filter_by(user_id=current_user.id).all()
-        insights = []
- 
-        if goal and plan:
-            insights = get_spending_insights(current_user.id, goal)
- 
-        return render_template(
-            'retirement.html',
-            page_name='retirement',
-            user_accounts=get_user_accounts(current_user),
-            linked_accounts=get_linked_accounts(current_user),
-            goal=goal,
-            plan=plan,
-            milestones=milestones,
-            insights=insights,
-        )
-    except Exception as e:
-        print(f"Retirement page error: {e}")
-        import traceback; traceback.print_exc()
-        flash('Error loading retirement page.', 'error')
-        return redirect(url_for('dashboard'))
- 
- 
-@app.route('/retirement/setup', methods=['POST'])
-@login_required
-def retirement_setup():
-    """Create or update a RetirementGoal."""
-    try:
-        current_age           = int(request.form.get('current_age', 25))
-        retirement_age        = int(request.form.get('retirement_age', 60))
-        target_monthly_income = float(request.form.get('target_monthly_income', 50000))
-        current_monthly_contribution = float(request.form.get('current_monthly_contribution', 0))
-        expected_return       = float(request.form.get('expected_return', 12.0))
-        inflation_rate        = float(request.form.get('inflation_rate', 6.0))
-        life_expectancy       = int(request.form.get('life_expectancy', 85))
- 
-        # Basic validation
-        if retirement_age <= current_age:
-            flash('Retirement age must be greater than your current age.', 'error')
-            return redirect(url_for('retirement'))
-        if life_expectancy <= retirement_age:
-            flash('Life expectancy must be greater than retirement age.', 'error')
-            return redirect(url_for('retirement'))
- 
-        # Upsert goal
-        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
-        if not goal:
-            goal = RetirementGoal(user_id=current_user.id)
-            db.session.add(goal)
- 
-        goal.current_age                  = current_age
-        goal.retirement_age               = retirement_age
-        goal.target_monthly_income        = target_monthly_income
-        goal.current_monthly_contribution = current_monthly_contribution
-        goal.expected_return              = expected_return
-        goal.inflation_rate               = inflation_rate
-        goal.life_expectancy              = life_expectancy
-        goal.updated_at                   = datetime.utcnow()
-        db.session.commit()
- 
-        # Calculate + save plan
-        calc = calculate_retirement_plan(goal)
-        plan = save_retirement_plan(current_user.id, goal, calc)
- 
-        # Check milestones
-        check_and_award_milestones(current_user.id, goal, plan)
- 
-        flash('Retirement goal updated! Here\'s your personalised plan. 🎯', 'success')
-        return redirect(url_for('retirement'))
- 
-    except Exception as e:
-        db.session.rollback()
-        print(f"Retirement setup error: {e}")
-        import traceback; traceback.print_exc()
-        flash('Failed to save retirement goal. Please try again.', 'error')
-        return redirect(url_for('retirement'))
- 
- 
-@app.route('/api/retirement/simulate', methods=['POST'])
-@login_required
-def retirement_simulate():
-    """
-    API: run a what-if simulation without saving.
-    Body: { monthly_investment: float, retire_age: int }
-    """
-    try:
-        goal = RetirementGoal.query.filter_by(user_id=current_user.id).first()
-        if not goal:
-            return jsonify({'error': 'No retirement goal set'}), 404
- 
-        data = request.get_json()
-        monthly_investment = float(data.get('monthly_investment', goal.current_monthly_contribution))
-        retire_age = int(data.get('retire_age', goal.retirement_age))
- 
-        if retire_age <= goal.current_age:
-            return jsonify({'error': 'Retirement age must be greater than current age'}), 400
- 
-        result = simulate_scenario(goal, monthly_investment, retire_age)
-        return jsonify(result)
- 
-    except Exception as e:
-        print(f"Simulation error: {e}")
-        return jsonify({'error': str(e)}), 500
+
+# NOTE: Do not append @app.route handlers below.
+# When using `run.py` or `import app`, __name__ is not "__main__", so this block
+# is skipped but any code AFTER it still runs — duplicate routes cause:
+# AssertionError: View function mapping is overwriting an existing endpoint function

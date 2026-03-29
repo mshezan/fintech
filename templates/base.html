@@ -142,7 +142,7 @@
         {% if messages %}
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
                 {% for category, message in messages %}
-                    <div class="rounded-lg p-4 mb-4 
+                    <div data-flash-category="{{ category }}" class="rounded-lg p-4 mb-4 
                                 {% if category == 'success' %}bg-green-100 border-l-4 border-green-500 text-green-700
                                 {% elif category == 'error' %}bg-red-100 border-l-4 border-red-500 text-red-700
                                 {% else %}bg-blue-100 border-l-4 border-blue-500 text-blue-700{% endif %}">

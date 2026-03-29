@@ -68,16 +68,18 @@ function renderChart(month, account) {
     
     fetch(url)
         .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to fetch spending data: ' + response.status);
-            }
-            return response.json();
+            return response.json().then(data => ({ ok: response.ok, data }));
         })
-        .then(data => {
+        .then(({ ok, data }) => {
             console.log('Chart data received:', data);
-            
-            if (data.labels && data.labels.length > 0) {
-                displayChart(data.labels, data.data);
+            if (!data || (data.status === 'error')) {
+                displayEmptyChart();
+                return;
+            }
+            const labels = Array.isArray(data.labels) ? data.labels : [];
+            const series = Array.isArray(data.data) ? data.data : [];
+            if (labels.length > 0) {
+                displayChart(labels, series.map(v => (Number.isFinite(Number(v)) ? Number(v) : 0)));
             } else {
                 displayEmptyChart();
             }

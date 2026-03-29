@@ -15,6 +15,9 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     aa_token = db.Column(db.String(500), nullable=True)
+    # PAN-like identity for account aggregation (nullable for legacy users)
+    identity_id = db.Column(db.String(64), nullable=True, index=True)
+    full_name = db.Column(db.String(255), nullable=True)
     
     bank_accounts = db.relationship('BankAccount', backref='user', lazy=True, cascade='all, delete-orphan')
     linked_accounts = db.relationship('LinkedAccount', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -27,8 +30,23 @@ class User(UserMixin, db.Model):
         return {
             'id': self.id,
             'email': self.email,
+            'identity_id': self.identity_id,
+            'full_name': self.full_name,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+
+
+class Bank(db.Model):
+    """Institution (HDFC, ICICI, SBI, …) — one user can link accounts across many banks."""
+    __tablename__ = 'banks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), unique=True, nullable=False)
+
+    linked_accounts = db.relationship('LinkedAccount', backref='bank', lazy=True)
+
+    def __repr__(self):
+        return f'<Bank {self.name}>'
 
 
 class BankAccount(db.Model):
@@ -71,6 +89,9 @@ class LinkedAccount(db.Model):
     Links Flask app to FastAPI mock bank accounts
     """
     __tablename__ = 'linked_accounts'
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'api_account_id', name='uq_linked_user_api_account'),
+    )
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -80,11 +101,16 @@ class LinkedAccount(db.Model):
     
     # API Integration - CRITICAL FIELD
     api_account_id = db.Column(db.Integer, nullable=False, index=True)
+
+    bank_id = db.Column(db.Integer, db.ForeignKey('banks.id'), nullable=True)
+    masked_account_number = db.Column(db.String(32), nullable=True)
     
     # Cached data from API (updated on sync)
     api_account_name = db.Column(db.String(255), nullable=True)
     api_account_type = db.Column(db.String(100), nullable=True)
     api_balance = db.Column(db.Numeric(12, 2), nullable=True)
+    # False when bank no longer returns this api_account_id (e.g. after mock ID scheme change)
+    api_link_valid = db.Column(db.Boolean, default=True, nullable=False)
     
     # AA Integration fields (for future use)
     aa_consent_id = db.Column(db.String(500), nullable=True)
@@ -105,13 +131,18 @@ class LinkedAccount(db.Model):
         return f'<LinkedAccount {self.account_nickname} (API ID: {self.api_account_id})>'
     
     def to_dict(self):
+        bank_name = self.bank.name if self.bank else None
         return {
             'id': self.id,
             'account_nickname': self.account_nickname,
             'api_account_id': self.api_account_id,
+            'bank_id': self.bank_id,
+            'bank_name': bank_name,
+            'masked_account_number': self.masked_account_number,
             'api_account_name': self.api_account_name,
             'api_account_type': self.api_account_type,
             'api_balance': float(self.api_balance) if self.api_balance else 0.0,
+            'api_link_valid': self.api_link_valid if self.api_link_valid is not None else True,
             'is_active': self.is_active,
             'consent_status': self.consent_status,
             'last_synced': self.last_synced.isoformat() if self.last_synced else None,
@@ -139,7 +170,14 @@ class Transaction(db.Model):
     Maps to FastAPI TransactionSchema
     """
     __tablename__ = 'transactions'
-    
+    __table_args__ = (
+        db.UniqueConstraint(
+            'account_id',
+            'transaction_hash',
+            name='uq_tx_linked_account_hash',
+        ),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     
@@ -158,6 +196,9 @@ class Transaction(db.Model):
     mode = db.Column(db.String(50), nullable=True)  # Payment mode (UPI, Card, NEFT, etc.)
     transaction_type = db.Column(db.String(50), default='debit')  # debit/credit
     narration = db.Column(db.String(500), nullable=True)  # Additional description
+
+    # Dedup key for linked-account imports: sha256(linked_account_id|date|amount|description)
+    transaction_hash = db.Column(db.String(64), nullable=True, index=True)
     
     # Metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

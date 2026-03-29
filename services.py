@@ -1,11 +1,59 @@
-from models import db, Category
+import re
+from datetime import datetime
+from typing import Optional
 
-# Indian vendor categorization keywords
+from models import Bank, BankAccount, Category, db
+
+DEFAULT_BANK_NAMES = (
+    'HDFC Bank',
+    'ICICI Bank',
+    'State Bank of India',
+)
+
+
+def initialize_banks():
+    """Seed bank institutions if missing."""
+    for name in DEFAULT_BANK_NAMES:
+        if not Bank.query.filter_by(name=name).first():
+            db.session.add(Bank(name=name))
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Warning: Could not initialize banks: {e}")
+
+
+def get_or_create_bank_by_name(name: str) -> Optional[Bank]:
+    """Resolve API bank label to Bank row (fuzzy match on known names)."""
+    if not name or not str(name).strip():
+        return None
+    name = str(name).strip()
+    bank = Bank.query.filter_by(name=name).first()
+    if bank:
+        return bank
+    # Prefix / alias match
+    nlow = name.lower()
+    for b in Bank.query.all():
+        if b.name.lower() in nlow or nlow in b.name.lower():
+            return b
+    # New bank row for unknown institutions
+    bank = Bank(name=name[:120])
+    db.session.add(bank)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return Bank.query.filter_by(name=name[:120]).first()
+    return bank
+
+# Indian vendor categorization keywords (substring match unless listed in _BOUNDARY_KEYWORDS)
 CATEGORY_KEYWORDS = {
-    'Food & Drink': ['zomato', 'swiggy', 'mcdonalds', 'mcd', 'starbucks', 'cafe coffee day', 'ccd', 
-                     'dominos', 'pizza hut', 'eatsure', 'burger king', 'kfc', 'subway', 'dunkin'],
-    'Groceries': ['bigbasket', 'blinkit', 'zepto', 'grofers', 'jiomart', 'dmart', 'reliance fresh', 
-                  'more', 'spencers', 'nature basket', 'star bazaar'],
+    # Food — include common app names and spellings
+    'Food & Drink': ['swiggy', 'zomato', 'mcdonalds', 'mcd', 'starbucks', 'cafe coffee day', 'ccd',
+                     'dominos', 'pizza hut', 'eatsure', 'burger king', 'kfc', 'subway', 'dunkin',
+                     'instamart'],
+    'Groceries': ['dmart', 'd-mart', 'bigbasket', 'big basket', 'blinkit', 'zepto', 'grofers', 'jiomart',
+                  'reliance fresh', 'more', 'spencers', 'nature basket', 'star bazaar'],
     'Fuel': ['indian oil', 'ioc', 'hpcl', 'hindustan petroleum', 'bharat petroleum', 'bpcl', 
              'shell', 'essar', 'reliance petroleum', 'petrol', 'diesel', 'fuel'],
     'Subscriptions': ['netflix', 'spotify', 'prime video', 'amazon prime', 'hotstar', 'disney', 
@@ -13,13 +61,41 @@ CATEGORY_KEYWORDS = {
     'Utilities': ['bses', 'tata power', 'bescom', 'adani electricity', 'airtel', 'jio', 'vodafone', 
                   'vi', 'bsnl', 'mtnl', 'electricity', 'water bill', 'gas bill', 'piped gas', 
                   'indraprastha gas', 'mahanagar gas'],
-    'Transport': ['ola', 'uber', 'rapido', 'redbus', 'irctc', 'metro', 'delhi metro', 'mumbai metro', 
-                  'bangalore metro', 'namma metro', 'makemytrip', 'goibibo', 'yatra'],
-    'Shopping': ['amazon', 'flipkart', 'myntra', 'meesho', 'ajio', 'nykaa', 'reliance digital', 
-                 'croma', 'vijay sales', 'lifestyle', 'westside', 'max fashion', 'pantaloons'],
+    'Transport': ['uber', 'ola', 'uber eats', 'rapido', 'redbus', 'irctc', 'metro', 'delhi metro',
+                  'mumbai metro', 'bangalore metro', 'namma metro', 'makemytrip', 'goibibo', 'yatra'],
+    'Shopping': ['amazon', 'amazon.in', 'amazon pay', 'flipkart', 'myntra', 'meesho', 'ajio', 'nykaa',
+                 'reliance digital', 'croma', 'vijay sales', 'lifestyle', 'westside', 'max fashion',
+                 'pantaloons'],
     'Payments': ['paytm', 'phonepe', 'gpay', 'google pay', 'bhim', 'upi', 'mobikwik'],
     'Rent/EMI': ['rent', 'emi', 'housing loan', 'home loan', 'hdfc', 'icici', 'sbi', 'axis']
 }
+
+# Whole-token match only — avoids "rent" in "current", "ola" in "cola", etc.
+_BOUNDARY_KEYWORDS = frozenset({'rent', 'ola', 'emi', 'axis', 'sbi'})
+
+
+def _normalize_description(text: Optional[str]) -> str:
+    """Lowercase, trim, collapse internal whitespace (and common unicode dashes)."""
+    if not text:
+        return ''
+    s = str(text).strip().lower()
+    s = s.replace('\u2013', '-').replace('\u2014', '-').replace('\u2212', '-')
+    s = re.sub(r'\s+', ' ', s)
+    return s
+
+
+def _keyword_in_haystack(keyword: str, haystack: str) -> bool:
+    if not keyword or not haystack:
+        return False
+    if keyword in _BOUNDARY_KEYWORDS:
+        return bool(
+            re.search(
+                rf'(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])',
+                haystack,
+                re.IGNORECASE,
+            )
+        )
+    return keyword in haystack
 
 
 def categorize_transaction(transaction):
@@ -29,13 +105,13 @@ def categorize_transaction(transaction):
     """
     if transaction.category_id is not None:
         return False  # Already categorized
-    
-    description_lower = transaction.description.lower()
-    
+
+    haystack = _normalize_description(transaction.description)
+
     # Iterate through categories and keywords
     for category_name, keywords in CATEGORY_KEYWORDS.items():
         for keyword in keywords:
-            if keyword in description_lower:
+            if _keyword_in_haystack(keyword, haystack):
                 # Find category (cached query)
                 category = Category.query.filter_by(name=category_name).first()
                 if category:
@@ -63,9 +139,7 @@ def initialize_categories():
     except Exception as e:
         db.session.rollback()
         print(f"Warning: Could not initialize categories: {e}")
-# Add these imports at the top if not present
-from models import BankAccount
-from datetime import datetime
+
 
 def get_user_accounts(user):
     """
@@ -116,11 +190,19 @@ def get_account_stats(account):
     Get statistics for a specific bank account
     """
     from models import Transaction, Category
-    from sqlalchemy import func
-    
+    from sqlalchemy import func, or_
+
+    debit_only = or_(
+        Transaction.transaction_type == "debit",
+        Transaction.transaction_type.is_(None),
+    )
+
     total_spending = db.session.query(
         func.sum(Transaction.amount)
-    ).filter(Transaction.bank_account_id == account.id).scalar() or 0
+    ).filter(
+        Transaction.bank_account_id == account.id,
+        debit_only,
+    ).scalar() or 0
     
     transaction_count = Transaction.query.filter_by(bank_account_id=account.id).count()
     
@@ -129,7 +211,8 @@ def get_account_stats(account):
         Category.name,
         func.sum(Transaction.amount).label('total')
     ).join(Transaction).filter(
-        Transaction.bank_account_id == account.id
+        Transaction.bank_account_id == account.id,
+        debit_only,
     ).group_by(Category.name).order_by(
         func.sum(Transaction.amount).desc()
     ).first()

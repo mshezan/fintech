@@ -108,12 +108,12 @@ function updateTransactionCategory(transactionId, categoryId, dropdown, original
         body: JSON.stringify(data)
     })
     .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to update category: ' + response.status);
-        }
-        return response.json();
+        return response.json().then(data => ({ ok: response.ok, data }));
     })
-    .then(data => {
+    .then(({ ok, data }) => {
+        if (!ok || !data || data.status !== 'success') {
+            throw new Error((data && data.message) || 'Update failed');
+        }
         console.log('✓ Category updated successfully:', data);
         
         // Show success feedback

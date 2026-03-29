@@ -2,115 +2,206 @@
 {% block title %}Retirement Intelligence – FinTrack{% endblock %}
 
 {% block content %}
-<div class="space-y-8">
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-teal-600 to-indigo-600 rounded-xl shadow-lg p-8 text-white">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-            <div>
-                <h1 class="text-4xl font-bold">Retirement Intelligence Engine</h1>
-                <p class="mt-2 text-teal-100">Your real data. Indian context. Honest projections.</p>
-            </div>
-            <div id="readiness-badge" class="bg-teal-700 bg-opacity-50 rounded-lg px-4 py-2 text-center hidden">
-                <p class="text-sm">Data-Driven Score</p>
-                <p id="data-score" class="text-3xl font-bold">—</p>
+<div class="space-y-8 pb-16">
+    <!-- 1. HERO SUMMARY -->
+    <div class="bg-gradient-to-br from-slate-900 via-teal-900 to-indigo-900 rounded-2xl shadow-2xl p-8 md:p-10 text-white relative overflow-hidden">
+        <div class="absolute inset-0 opacity-20 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.15\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')]"></div>
+        <div class="relative z-10">
+            <p class="text-teal-200 text-sm font-medium tracking-wide uppercase mb-2">Guidance overview</p>
+            <h1 class="text-3xl md:text-4xl font-bold leading-tight mb-4">Retirement Intelligence</h1>
+            <p id="hero-overview" class="text-lg md:text-xl text-white font-semibold max-w-2xl mb-3 leading-snug">We review your synced transactions to turn patterns into clear next steps.</p>
+            <p id="hero-key-takeaway" class="text-base text-teal-100 font-medium max-w-2xl mb-3 leading-snug"></p>
+            <p id="hero-future-impact" class="text-sm md:text-base text-amber-200/95 font-medium max-w-2xl mb-6 leading-snug"></p>
+            <div class="flex flex-wrap gap-4 items-center mt-2">
+                <div id="hero-readiness" class="hidden bg-white/10 backdrop-blur rounded-xl px-5 py-3 border border-white/20">
+                    <p class="text-xs text-teal-200">Goal readiness score</p>
+                    <p id="data-score" class="text-2xl font-bold">—</p>
+                </div>
+                <div class="bg-amber-400/20 border border-amber-300/40 rounded-xl px-5 py-3 max-w-md">
+                    <p class="text-xs text-amber-100 uppercase tracking-wide">Suggested first move</p>
+                    <p id="hero-best-action" class="font-semibold">Loading…</p>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Data Check -->
-    <div id="data-check" class="bg-white rounded-xl shadow-md p-6 hidden">
-        <div class="flex items-center gap-3">
-            <div class="text-green-500 text-2xl">✅</div>
-            <p class="text-lg font-semibold text-gray-900">Analysis Ready! Based on your last 6 months transactions.</p>
-        </div>
+    {% if config.DEBUG %}
+    <div class="flex justify-end">
+        <button type="button" id="dev-reset-btn"
+            class="text-sm px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 transition">
+            Reset All Data (Dev Only)
+        </button>
     </div>
+    {% endif %}
 
-    <!-- Instructions (always show first) -->
-    <div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-8 mb-8">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4">🚀 Get Started</h2>
+    <!-- Get started (hidden when data loads) -->
+    <div id="legacy-section" class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Get started in three steps</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="text-center p-4">
-                <div class="text-3xl mb-2">1️⃣</div>
-                <p class="font-semibold mb-1">Link Accounts</p>
-                <p class="text-sm text-gray-600">Go to <a href="{{ url_for('accounts') }}" class="font-semibold underline">Accounts tab</a></p>
+                <div class="text-3xl mb-2">1</div>
+                <p class="font-semibold mb-1">Link accounts</p>
+                <p class="text-sm text-gray-600">Open <a href="{{ url_for('accounts') }}" class="font-semibold underline">Accounts</a> and connect your bank.</p>
             </div>
             <div class="text-center p-4">
-                <div class="text-3xl mb-2">2️⃣</div>
-                <p class="font-semibold mb-1">Sync Transactions</p>
-                <p class="text-sm text-gray-600">Click SYNC on each account (2+ months data)</p>
+                <div class="text-3xl mb-2">2</div>
+                <p class="font-semibold mb-1">Sync transactions</p>
+                <p class="text-sm text-gray-600">Sync each account — we work better with a few months of history.</p>
             </div>
             <div class="text-center p-4">
-                <div class="text-3xl mb-2">3️⃣</div>
-                <p class="font-semibold mb-1">See Intelligence</p>
-                <p class="text-sm text-gray-600">Real insights from your Swiggy/EMI patterns</p>
+                <div class="text-3xl mb-2">3</div>
+                <p class="font-semibold mb-1">Come back here</p>
+                <p class="text-sm text-gray-600">We’ll turn patterns into clear decisions, not spreadsheets.</p>
             </div>
         </div>
     </div>
 
-    <!-- Data Status & Analysis -->
-    <div id="data-status-section" class="bg-white rounded-xl shadow-md p-8 mb-8">
-        <div class="flex items-center justify-between">
-            <h2 class="text-2xl font-bold text-gray-900">📊 Your Retirement Intelligence</h2>
-            <div id="status-indicator" class="px-4 py-2 rounded-full text-sm font-semibold">
-                Loading...
-            </div>
-        </div>
-        <div id="analysis-placeholder">
-            <div class="text-center py-12">
-                <div class="text-6xl mb-4">🔄</div>
-                <p class="text-xl font-semibold text-gray-600 mb-2">Analyzing your transactions...</p>
-                <p class="text-gray-500">Need 2+ months synced data for accurate insights</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- NEW: Data-Driven Sections (hidden until loaded) -->
-    
-    <!-- 1. Financial Snapshot -->
-    <div id="snapshot-section" class="grid grid-cols-1 lg:grid-cols-2 gap-6 bg-white rounded-xl shadow-md p-8 hidden">
+    <!-- Status strip -->
+    <div id="data-status-section" class="bg-white rounded-xl shadow-md p-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-            <h2 class="text-2xl font-bold text-gray-900 mb-4">💰 Monthly Snapshot</h2>
-            <div class="space-y-4">
+            <h2 class="text-xl font-bold text-gray-900">Analysis status</h2>
+            <p id="analysis-confidence-note" class="hidden text-xs text-slate-500 mt-1.5 leading-relaxed max-w-xl"></p>
+        </div>
+        <div id="status-indicator" class="px-4 py-2 rounded-full text-sm font-semibold">Loading…</div>
+    </div>
+
+    <div id="data-quality-banner" class="hidden rounded-xl border border-amber-200 bg-amber-50/90 p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">Data quality</p>
+        <ul id="data-quality-messages" class="list-disc list-inside space-y-1 text-sm text-amber-950"></ul>
+    </div>
+
+    <div id="analysis-placeholder" class="bg-white rounded-xl shadow-md p-12 text-center">
+        <div class="text-5xl mb-4 animate-pulse">⏳</div>
+        <p class="text-xl font-semibold text-gray-700">Pulling your last few months…</p>
+        <p class="text-gray-500 mt-2">We separate salary inflows, internal transfers, and real spending.</p>
+    </div>
+
+    <!-- 2. FINANCIAL SNAPSHOT + accounts -->
+    <div id="snapshot-section" class="hidden space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl shadow-md p-8">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Financial snapshot</h2>
+                <p class="text-gray-500 text-sm mb-2">Monthly averages from your analysis window.</p>
+                <p class="text-gray-500 text-xs mb-6 leading-relaxed">Internal transfers between your accounts have been excluded from this analysis.</p>
                 <div class="grid grid-cols-2 gap-4 text-center">
-                    <div class="bg-green-50 rounded-lg p-4">
-                        <p class="text-sm font-medium text-green-700">Avg Income</p>
-                        <p id="avg-income" class="text-2xl font-bold text-green-600">₹—</p>
+                    <div class="bg-emerald-50 rounded-xl p-4">
+                        <p class="text-sm font-medium text-emerald-800">Monthly income</p>
+                        <p id="avg-income" class="text-2xl font-bold text-emerald-600">₹—</p>
                     </div>
-                    <div class="bg-red-50 rounded-lg p-4">
-                        <p class="text-sm font-medium text-red-700">Avg Expenses</p>
-                        <p id="avg-expense" class="text-2xl font-bold text-red-600">₹—</p>
+                    <div class="bg-rose-50 rounded-xl p-4">
+                        <p class="text-sm font-medium text-rose-800">Monthly expenses</p>
+                        <p id="avg-expense" class="text-2xl font-bold text-rose-600">₹—</p>
+                    </div>
+                    <div class="bg-sky-50 rounded-xl p-4">
+                        <p class="text-sm font-medium text-sky-800">Savings rate</p>
+                        <p id="savings-rate-display" class="text-2xl font-bold text-sky-700 mt-1">—</p>
+                    </div>
+                    <div class="bg-indigo-50 rounded-xl p-4">
+                        <p class="text-sm font-medium text-indigo-800">Available for investment</p>
+                        <p id="surplus" class="text-2xl font-bold text-indigo-700 mt-1">₹—</p>
                     </div>
                 </div>
-                <div class="bg-blue-50 rounded-lg p-4">
-                    <p class="text-sm font-medium text-blue-700">Surplus / Savings Rate</p>
-                    <p class="flex items-baseline justify-center gap-2">
-                        <span id="surplus" class="text-2xl font-bold text-blue-600">₹—</span>
-                        <span id="savings-rate" class="text-lg text-blue-500">(—%)</span>
-                    </p>
+                <p id="negative-savings-note" class="hidden text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 mt-4 text-left leading-relaxed"></p>
+            </div>
+            <div class="bg-white rounded-xl shadow-md p-8 flex flex-col justify-center">
+                <canvas id="income-expense-pie" height="220"></canvas>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl shadow p-5 border border-gray-100">
+                <p class="text-xs font-semibold text-gray-500 uppercase">Primary income (stable)</p>
+                <p id="income-primary" class="text-xl font-bold text-gray-900 mt-1">₹—</p>
+                <p id="income-confidence" class="text-xs text-gray-500 mt-2"></p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-5 border border-gray-100">
+                <p class="text-xs font-semibold text-gray-500 uppercase">Variable / side inflows</p>
+                <p id="income-secondary" class="text-xl font-bold text-gray-900 mt-1">₹—</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-5 border border-gray-100">
+                <p class="text-xs font-semibold text-gray-500 uppercase">Transfer noise removed</p>
+                <p id="transfer-exclusions" class="text-xl font-bold text-gray-900 mt-1">—</p>
+                <p class="text-xs text-gray-500 mt-2">Same-day pairs and transfers we could identify between your accounts.</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-md p-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Where money lives</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="rounded-lg bg-teal-50 p-4">
+                    <p class="text-sm text-teal-800 font-medium">Salary / inflow account</p>
+                    <p id="acct-salary" class="font-semibold text-teal-950 mt-1">—</p>
+                </div>
+                <div class="rounded-lg bg-orange-50 p-4">
+                    <p class="text-sm text-orange-800 font-medium">Highest spend activity</p>
+                    <p id="acct-spend" class="font-semibold text-orange-950 mt-1">—</p>
+                </div>
+                <div class="rounded-lg bg-slate-50 p-4">
+                    <p class="text-sm text-slate-700 font-medium">Quiet / savings-style</p>
+                    <p id="acct-save" class="font-semibold text-slate-900 mt-1">—</p>
                 </div>
             </div>
         </div>
-        <div>
-            <canvas id="income-expense-pie" height="250"></canvas>
+    </div>
+
+    <!-- 3. HEALTH SCORE -->
+    <div id="health-section" class="hidden bg-white rounded-xl shadow-md p-8 border-l-4 border-indigo-500">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">Financial health score</h2>
+                <p id="health-reason" class="text-gray-600 mt-2 max-w-xl"></p>
+            </div>
+            <div class="text-center md:text-right">
+                <p id="health-score" class="text-5xl font-black text-indigo-600">—</p>
+                <p id="health-level" class="text-sm font-semibold text-gray-500 uppercase tracking-wide mt-1">—</p>
+            </div>
         </div>
     </div>
 
-    <!-- 2. Spending Breakdown -->
+    <!-- 4. ACTION CARDS -->
+    <div id="actions-section" class="hidden">
+        <h2 class="text-2xl font-bold text-gray-900 mb-2">Recommended actions</h2>
+        <p class="text-gray-600 mb-6">Three moves ranked by estimated impact on your retirement timeline. Long-term figures use the same growth assumptions as your analysis and are estimates, not promises.</p>
+        <div id="action-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+    </div>
+
+    <!-- 5. TRENDS -->
+    <div id="trends-section" class="hidden bg-white rounded-xl shadow-md p-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">Recent patterns</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="p-5 rounded-xl bg-gradient-to-br from-blue-50 to-white border border-blue-100">
+                <p class="text-sm font-semibold text-blue-800">Spending trend</p>
+                <p id="trend-spend" class="text-base font-semibold text-blue-900 mt-2 leading-snug">—</p>
+                <p class="text-xs text-gray-500 mt-2">Last few months of expenses</p>
+            </div>
+            <div class="p-5 rounded-xl bg-gradient-to-br from-violet-50 to-white border border-violet-100">
+                <p class="text-sm font-semibold text-violet-800">Income pattern</p>
+                <p id="trend-income" class="text-base font-semibold text-violet-900 mt-2 leading-snug">—</p>
+                <p class="text-xs text-gray-500 mt-2">Consistency vs volatility</p>
+            </div>
+            <div class="p-5 rounded-xl bg-gradient-to-br from-emerald-50 to-white border border-emerald-100">
+                <p class="text-sm font-semibold text-emerald-800">Surplus habit</p>
+                <p id="trend-savings" class="text-base font-semibold text-emerald-900 mt-2 leading-snug">—</p>
+                <p class="text-xs text-gray-500 mt-2">How steady your surplus is</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Breakdown + surplus (existing charts) -->
     <div id="breakdown-section" class="bg-white rounded-xl shadow-md p-8 hidden">
-        <h2 class="text-2xl font-bold text-gray-900 mb-6">📊 Spending Behavior</h2>
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">Spending breakdown</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-                <h3 class="font-semibold text-lg mb-4">Essential vs Discretionary</h3>
+                <h3 class="font-semibold text-lg mb-4">Essential vs non-essential</h3>
                 <canvas id="essential-donut" height="300"></canvas>
             </div>
-            <div class="space-y-4">
-                <h3 class="font-semibold text-lg mb-3">Top Leaks (Non-Essential)</h3>
+            <div>
+                <h3 class="font-semibold text-lg mb-4">Top non-essential categories</h3>
                 <ul id="top-leaks" class="space-y-2"></ul>
             </div>
         </div>
     </div>
 
-    <!-- 3. Investable Surplus -->
     <div id="surplus-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white rounded-xl shadow-md p-8 hidden">
         <div class="text-center">
             <div class="text-3xl mb-2">💳</div>
@@ -132,181 +223,438 @@
         </div>
     </div>
 
-    <!-- 4. Behavioral Insights -->
-    <div id="insights-section" class="bg-white rounded-xl shadow-md p-8 hidden">
-        <h2 class="text-2xl font-bold text-gray-900 mb-6">🧠 Behavioral Intelligence</h2>
-        <div id="insights-list" class="space-y-4"></div>
+    <!-- Retirement age -->
+    <div id="retire-age-section" class="hidden bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-8 text-white">
+        <h2 class="text-xl font-bold mb-4">Retirement age outlook</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+            <div>
+                <p class="text-slate-400 text-sm">Goal retirement age</p>
+                <p id="rp-baseline" class="text-3xl font-bold">—</p>
+            </div>
+            <div>
+                <p class="text-teal-300 text-sm">With optimized habits</p>
+                <p id="rp-optimized" class="text-3xl font-bold text-teal-300">—</p>
+            </div>
+            <div>
+                <p class="text-slate-400 text-sm">Years you could gain</p>
+                <p id="rp-gained" class="text-3xl font-bold text-amber-300">—</p>
+            </div>
+        </div>
+        <p id="rp-range" class="mt-4 text-center text-slate-300 text-sm max-w-2xl mx-auto"></p>
     </div>
 
-    <!-- 5. Portfolio Projections -->
+    <!-- 6. SCENARIO COMPARISON -->
     <div id="projections-section" class="bg-white rounded-xl shadow-md p-8 hidden">
-        <h2 class="text-2xl font-bold text-gray-900 mb-6">📈 Portfolio Projections (Moderate Surplus, Retire @60)</h2>
+        <h2 class="text-2xl font-bold text-gray-900 mb-2">Portfolio scenarios</h2>
+        <p class="text-gray-500 text-sm mb-6">Estimated future corpus using your moderate investable surplus and goal retirement age.</p>
         <div class="overflow-x-auto">
             <table class="w-full table-auto">
                 <thead>
                     <tr class="bg-gray-50">
                         <th class="px-4 py-3 text-left font-semibold">Portfolio</th>
-                        <th class="px-4 py-3 text-right font-semibold">Annual Return</th>
-                        <th class="px-4 py-3 text-right font-semibold">Corpus @60</th>
-                        <th class="px-4 py-3 text-right font-semibold">Monthly Income</th>
+                        <th class="px-4 py-3 text-right font-semibold">Return</th>
+                        <th class="px-4 py-3 text-right font-semibold">Corpus</th>
+                        <th class="px-4 py-3 text-right font-semibold">Monthly income (4% rule)</th>
                     </tr>
                 </thead>
-                <tbody id="portfolio-table">
-                    <!-- JS populated -->
-                </tbody>
+                <tbody id="portfolio-table"></tbody>
             </table>
         </div>
     </div>
 
-    <!-- 6. Scenarios Comparison -->
     <div id="scenarios-section" class="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-white rounded-xl shadow-md p-8 hidden">
-        <div class="text-center border-r lg:border-r-gray-200">
-            <h3 class="font-bold text-xl mb-2">Current Behavior</h3>
+        <div class="text-center border-b lg:border-b-0 lg:border-r border-gray-100 pb-6 lg:pb-0">
+            <h3 class="font-bold text-xl mb-2">Current path</h3>
             <p id="current-corpus" class="text-3xl font-bold text-gray-900">₹— Cr</p>
-            <p class="text-sm text-gray-500">Retire age: 60</p>
+            <p class="text-sm text-gray-500 mt-2">Balanced portfolio, moderate savings</p>
         </div>
-        <div class="text-center border-r lg:border-r-gray-200">
-            <h3 class="font-bold text-xl mb-2 text-green-600">Optimized (-25% Leaks)</h3>
+        <div class="text-center border-b lg:border-b-0 lg:border-r border-gray-100 pb-6 lg:pb-0">
+            <h3 class="font-bold text-xl mb-2 text-green-600">Optimized</h3>
             <p id="optimized-corpus" class="text-3xl font-bold text-green-600">₹— Cr</p>
-            <p class="text-sm text-green-500">+₹X Cr boost</p>
+            <p id="optimized-delta" class="text-sm text-green-600 mt-2"></p>
         </div>
         <div class="text-center">
-            <h3 class="font-bold text-xl mb-2 text-orange-600">If Delayed 5 Yrs</h3>
-            <p id="delayed-corpus" class="text-3xl font-bold text-orange-600">Need ₹—/mo</p>
-            <p class="text-sm text-orange-500">+50% monthly req</p>
+            <h3 class="font-bold text-xl mb-2 text-indigo-600">Your focus</h3>
+            <p id="scenario-blurb" class="text-gray-600 text-sm px-4">Compare scenarios in your goal settings and keep investing automatic.</p>
         </div>
     </div>
 
-    <!-- Legacy Manual Goal (conditional) -->
+    <!-- 7. INSIGHTS -->
+    <div id="insights-section" class="bg-white rounded-xl shadow-md p-8 hidden">
+        <h2 class="text-2xl font-bold text-gray-900 mb-2">Insights that speak human</h2>
+        <p class="text-gray-500 mb-6">Short reads based on your categories, UPI rhythm, and EMIs — not boilerplate tips.</p>
+        <div id="insights-list" class="space-y-4"></div>
+    </div>
+
     {% if goal %}
-    <div class="bg-gray-50 rounded-xl p-6">
-        <h3 class="text-lg font-semibold mb-4">⚠️ Legacy Manual Mode</h3>
-        <!-- Existing manual edit form here if needed -->
-        <p class="text-sm text-gray-600">Data-driven analysis above supersedes manual inputs.</p>
+    <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+        <h3 class="text-lg font-semibold mb-2">Saved goal</h3>
+        <p class="text-sm text-gray-600">You have a retirement goal on file. Figures above combine that goal with recent spending where possible.</p>
     </div>
     {% endif %}
-
 </div>
 
-<!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script>
 let analysisData = null;
 
-// Load analysis on page load
 async function loadAnalysis() {
+    const statusEl = document.getElementById('status-indicator');
+    const placeholder = document.getElementById('analysis-placeholder');
     try {
         const res = await fetch('/api/retirement/analysis');
-        if (!res.ok) throw new Error('No data');
         analysisData = await res.json();
-        
+        if (analysisData.status === 'error' || analysisData.error) {
+            throw new Error(analysisData.message || analysisData.error || 'Analysis failed');
+        }
+
+        if (analysisData.readiness_score != null) {
+            document.getElementById('hero-readiness').classList.remove('hidden');
+            document.getElementById('data-score').textContent = analysisData.readiness_score;
+        }
+
         if (!analysisData.has_data) {
-            document.getElementById('legacy-section').classList.remove('hidden');
+            statusEl.textContent = 'Needs data';
+            statusEl.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 text-amber-800';
+            const acn = document.getElementById('analysis-confidence-note');
+            if (acn) {
+                acn.classList.add('hidden');
+                acn.textContent = '';
+            }
+            placeholder.innerHTML = `<p class="text-gray-600">${analysisData.message || 'Link accounts and sync transactions.'}</p>`;
+            document.getElementById('hero-overview').textContent = 'Connect accounts and sync a few months of transactions to see your personalized overview.';
+            document.getElementById('hero-key-takeaway').textContent = '';
+            document.getElementById('hero-future-impact').textContent = '';
+            document.getElementById('hero-best-action').textContent = 'Start on the Accounts page';
             return;
         }
-        
-        // Show data sections
-        ['data-check', 'snapshot-section', 'breakdown-section', 'surplus-section', 
-         'insights-section', 'projections-section', 'scenarios-section'].forEach(id => {
+
+        statusEl.textContent = 'Live';
+        statusEl.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+        placeholder.classList.add('hidden');
+
+        ['snapshot-section', 'health-section', 'actions-section', 'trends-section', 'breakdown-section',
+         'surplus-section', 'retire-age-section', 'projections-section', 'scenarios-section', 'insights-section'].forEach(id => {
             document.getElementById(id).classList.remove('hidden');
         });
         document.getElementById('legacy-section').classList.add('hidden');
-        
+
+        renderHero();
+        renderDataQualityBanner();
+        renderAnalysisConfidenceNote();
         renderSnapshot();
+        renderAccountsIncome();
+        renderHealth();
+        renderActions();
+        renderTrends();
+        renderRetirementProjection();
         renderBreakdown();
         renderSurplus();
         renderInsights();
         renderProjections();
         renderScenarios();
-        
     } catch (e) {
-        console.error('Analysis load failed:', e);
-        document.getElementById('legacy-section').classList.remove('hidden');
+        console.error(e);
+        statusEl.textContent = 'Error';
+        statusEl.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+        placeholder.innerHTML = '<p class="text-red-600">Could not load analysis.</p>';
     }
 }
 
 function fmtINR(n) {
+    if (n == null || isNaN(n)) return '₹—';
     return '₹' + Math.round(n).toLocaleString('en-IN');
 }
 
+const ANALYSIS_CONFIDENCE_COPY = {
+    low: 'Based on limited data',
+    medium: 'Based on recent activity',
+    high: 'Based on consistent financial patterns',
+};
+
+function humanizeAnalysisConfidence(raw) {
+    const k = String(raw || '').toLowerCase();
+    return ANALYSIS_CONFIDENCE_COPY[k] || ANALYSIS_CONFIDENCE_COPY.medium;
+}
+
+function renderAnalysisConfidenceNote() {
+    const el = document.getElementById('analysis-confidence-note');
+    if (!el) return;
+    const c = analysisData.confidence;
+    if (c == null || c === '') {
+        el.classList.add('hidden');
+        el.textContent = '';
+        return;
+    }
+    el.textContent = humanizeAnalysisConfidence(c) + '. Estimates improve as more synced months roll in.';
+    el.classList.remove('hidden');
+}
+
+function humanizeTrendSpending(v) {
+    const x = String(v || '').toLowerCase();
+    if (x === 'increasing') return 'Your spending has been increasing over recent months.';
+    if (x === 'decreasing') return 'Your spending has been decreasing over recent months.';
+    if (x === 'stable') return 'Your spending has been fairly steady in recent months.';
+    return 'We need a few more months of data to describe your spending trend.';
+}
+
+function humanizeTrendIncome(v) {
+    const x = String(v || '').toLowerCase();
+    if (x === 'volatile') return 'Your income has varied quite a bit from month to month.';
+    if (x === 'moderate') return 'Your income has had some month-to-month variation.';
+    if (x === 'stable') return 'Your income has been fairly consistent across recent months.';
+    return 'We need more data to describe your income pattern.';
+}
+
+function humanizeTrendSavings(v) {
+    const x = String(v || '').toLowerCase();
+    if (x === 'consistent') return 'You have tended to keep a positive surplus in most months.';
+    if (x === 'mixed') return 'Your surplus has been comfortable in some months and tight in others.';
+    if (x === 'inconsistent') return 'Your monthly surplus has been uneven—several months look tight.';
+    return 'We need more months to judge how steady your surplus is.';
+}
+
+function renderDataQualityBanner() {
+    const wrap = document.getElementById('data-quality-banner');
+    const list = document.getElementById('data-quality-messages');
+    if (!wrap || !list) return;
+    const dq = analysisData.data_quality || {};
+    const warnings = dq.warnings || [];
+    if (warnings.length === 0) {
+        wrap.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+    }
+    wrap.classList.remove('hidden');
+    list.innerHTML = warnings.map(w => `<li>${w.text}</li>`).join('');
+}
+
+function renderHero() {
+    const s = analysisData.summary || {};
+    const ov = s.hero_overview || s.overview || s.status || '';
+    const k = s.hero_key_takeaway || '';
+    const fu = s.hero_future_impact || s.long_term_impact || s.future_self_impact || '';
+    document.getElementById('hero-overview').textContent = ov;
+    document.getElementById('hero-key-takeaway').textContent = k;
+    document.getElementById('hero-future-impact').textContent = fu;
+    if (s.best_action) document.getElementById('hero-best-action').textContent = s.best_action;
+}
+
 function renderSnapshot() {
-    const f = analysisData.finances;
+    const f = analysisData.finances || {};
+    const dq = analysisData.data_quality || {};
+    const rawSr = Number(f.savings_rate);
+    const negNote = document.getElementById('negative-savings-note');
+    if (negNote) {
+        if (!isNaN(rawSr) && rawSr < 0) {
+            negNote.textContent = 'You are currently spending more than your income. This may impact your financial stability if continued.';
+            negNote.classList.remove('hidden');
+        } else {
+            negNote.classList.add('hidden');
+            negNote.textContent = '';
+        }
+    }
     document.getElementById('avg-income').textContent = fmtINR(f.avg_monthly_income);
     document.getElementById('avg-expense').textContent = fmtINR(f.avg_monthly_expense);
     document.getElementById('surplus').textContent = fmtINR(f.surplus);
-    document.getElementById('savings-rate').textContent = `(${f.savings_rate}%)`;
-    
-    // Income/Expense Pie
+    const srDisp = dq.display_savings_rate_pct;
+    const savingsEl = document.getElementById('savings-rate-display');
+    if (srDisp !== null && srDisp !== undefined) {
+        savingsEl.textContent = srDisp + '%';
+        savingsEl.removeAttribute('title');
+    } else if (!isNaN(rawSr) && rawSr < 0) {
+        savingsEl.textContent = (Math.round(rawSr * 10) / 10) + '%';
+        savingsEl.title = '';
+    } else {
+        savingsEl.textContent = '—';
+        savingsEl.title = 'Rate hidden when outside a readable range (for example, over 200%).';
+    }
+
     new Chart(document.getElementById('income-expense-pie'), {
         type: 'doughnut',
         data: {
-            labels: ['Income', 'Expenses'],
+            labels: ['Avg monthly income', 'Avg monthly expenses'],
             datasets: [{
                 data: [f.avg_monthly_income, f.avg_monthly_expense],
-                backgroundColor: ['#10b981', '#ef4444']
+                backgroundColor: ['#10b981', '#f43f5e']
             }]
         },
         options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
     });
 }
 
+function renderAccountsIncome() {
+    const ia = analysisData.income_analysis || {};
+    const aa = analysisData.account_analysis || {};
+    document.getElementById('income-primary').textContent = fmtINR(ia.primary_income);
+    document.getElementById('income-secondary').textContent = fmtINR(ia.secondary_income);
+    document.getElementById('transfer-exclusions').textContent = ia.transfer_exclusions != null ? ia.transfer_exclusions : '—';
+    document.getElementById('income-confidence').textContent = ia.confidence
+        ? humanizeAnalysisConfidence(ia.confidence) + ' (salary / recurring inflow detection)'
+        : '';
+
+    document.getElementById('acct-salary').textContent = aa.salary_account || '—';
+    document.getElementById('acct-spend').textContent = aa.high_spend_account || '—';
+    document.getElementById('acct-save').textContent = aa.savings_account || '—';
+}
+
+function renderHealth() {
+    const h = analysisData.financial_health || {};
+    const s = analysisData.summary || {};
+    const label = s.financial_health_rating_label || 'Average';
+    document.getElementById('health-score').textContent = h.score != null ? h.score : '—';
+    const hl = document.getElementById('health-level');
+    hl.textContent = '';
+    hl.classList.add('hidden');
+    const reason = h.reason ? h.reason.charAt(0).toUpperCase() + h.reason.slice(1) : '';
+    document.getElementById('health-reason').textContent =
+        'Your financial health is currently rated as: ' + label + (reason ? '. ' + reason + '.' : '');
+}
+
+function renderActions() {
+    const actions = (analysisData.action_plan && analysisData.action_plan.actions) || [];
+    const wrap = document.getElementById('action-cards');
+    const esc = (t) => String(t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    wrap.innerHTML = actions.map((a, i) => {
+        const high = i === 0;
+        const desc = (a.description || '').split('\n').map(line => esc(line)).join('<br/>');
+        const border = high ? 'border-indigo-500 ring-2 ring-indigo-100 shadow-md' : 'border-gray-200';
+        const badge = high
+            ? '<p class="text-xs font-extrabold text-indigo-800 uppercase tracking-widest mb-2">Most impactful change</p>'
+            : `<p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Action ${i + 1}</p>`;
+        const titleCls = high ? 'text-xl font-extrabold text-gray-900' : 'text-lg font-bold text-gray-900';
+        return `
+        <div class="rounded-2xl border ${border} bg-gradient-to-b from-white to-slate-50 p-6 shadow-sm hover:shadow-md transition">
+            ${badge}
+            <h3 class="${titleCls} mt-0 mb-3 leading-tight">${esc(a.title)}</h3>
+            <div class="text-sm text-gray-800 leading-relaxed space-y-1">${desc}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderTrends() {
+    const t = analysisData.trends || {};
+    document.getElementById('trend-spend').textContent = humanizeTrendSpending(t.spending);
+    document.getElementById('trend-income').textContent = humanizeTrendIncome(t.income);
+    document.getElementById('trend-savings').textContent = humanizeTrendSavings(t.savings);
+}
+
+function renderRetirementProjection() {
+    const rp = analysisData.retirement_projection || {};
+    const baseline = rp.baseline_retirement_age != null ? rp.baseline_retirement_age : null;
+    document.getElementById('rp-baseline').textContent = baseline != null ? baseline : '—';
+    document.getElementById('rp-optimized').textContent = rp.optimized_age != null ? rp.optimized_age : '—';
+    const ym = rp.years_gained_moderate != null ? rp.years_gained_moderate : null;
+    const yb = rp.years_gained_best != null ? rp.years_gained_best : rp.years_gained;
+    let gainedTxt = rp.years_gained != null ? rp.years_gained + ' yrs' : '—';
+    if (ym != null && yb != null && ym >= 1 && yb >= 1 && ym !== yb) {
+        gainedTxt = ym + '–' + yb + ' yrs';
+    }
+    document.getElementById('rp-gained').textContent = gainedTxt;
+    const rangeEl = document.getElementById('rp-range');
+    if (rangeEl) {
+        rangeEl.textContent = rp.retirement_age_range_text || '';
+    }
+}
+
 function renderBreakdown() {
-    const expenses = analysisData.finances.expenses;
-    const labels = [...expenses.essential.map(e => e[0]), ...expenses.non_essential.map(e => e[0])];
-    const data = [...expenses.essential.map(e => e[1]), ...expenses.non_essential.map(e => e[1])];
-    
-    new Chart(document.getElementById('essential-donut'), {
-        type: 'doughnut',
-        data: { labels, datasets: [{ data, backgroundColor: ['#3b82f6', '#3b82f6', '#3b82f6', '#f59e0b', '#f59e0b', '#f59e0b'] }] },
-        options: { responsive: true }
-    });
-    
-    // Top leaks list
-    const leaksHtml = analysisData.finances.expenses.non_essential.slice(0,3).map(([cat, amt]) => 
-        `<li class="flex justify-between py-2 border-b"><span>${cat}</span><span class="font-bold">${fmtINR(amt)}</span></li>`
+    const expenses = (analysisData.finances && analysisData.finances.expenses) || { essential: [], non_essential: [] };
+    const ess = expenses.essential || [];
+    const non = expenses.non_essential || [];
+    const labels = [...ess.map(e => e[0]), ...non.map(e => e[0])];
+    const data = [...ess.map(e => e[1]), ...non.map(e => e[1])];
+
+    if (labels.length === 0) {
+        const el = document.getElementById('essential-donut');
+        el.replaceWith(Object.assign(document.createElement('p'), {
+            className: 'text-gray-500 text-sm',
+            textContent: 'No categorized debits — tag transactions for richer splits.'
+        }));
+    } else {
+        const colors = labels.map((_, i) => (i < ess.length ? '#3b82f6' : '#f59e0b'));
+        new Chart(document.getElementById('essential-donut'), {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data, backgroundColor: colors }] },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    const leaksHtml = non.slice(0, 5).map(([cat, amt]) =>
+        `<li class="flex justify-between py-2 border-b border-gray-100"><span>${cat}</span><span class="font-bold">${fmtINR(amt)}</span></li>`
     ).join('');
-    document.getElementById('top-leaks').innerHTML = leaksHtml;
+    document.getElementById('top-leaks').innerHTML = leaksHtml || '<li class="text-gray-500">No non-essential categories detected.</li>';
 }
 
 function renderSurplus() {
-    const s = analysisData.finances.investable_surplus;
+    const s = (analysisData.finances && analysisData.finances.investable_surplus) || {};
     document.getElementById('conservative-surplus').textContent = fmtINR(s.conservative);
     document.getElementById('moderate-surplus').textContent = fmtINR(s.moderate);
     document.getElementById('aggressive-surplus').textContent = fmtINR(s.aggressive);
 }
 
 function renderInsights() {
-    const insightsHtml = analysisData.insights.map(i => 
-        `<div class="p-4 rounded-lg bg-gradient-to-r ${i.priority === 'high' ? 'from-orange-50 to-yellow-50 border-l-4 border-orange-400' : 'from-blue-50 to-indigo-50 border-l-4 border-blue-400'}">
-            <p class="font-medium">${i.emoji} ${i.text}</p>
-            ${i.action ? `<p class="text-sm mt-1 text-gray-600">${i.action}</p>` : ''}
-        </div>`
-    ).join('');
+    const list = (analysisData.insights || []).slice(0, 5);
+    const esc = (t) => String(t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const insightsHtml = list.map(i => {
+        const em = (i.emoji && String(i.emoji).trim()) ? i.emoji + ' ' : '';
+        return `<div class="p-5 rounded-xl bg-gradient-to-r ${i.priority === 'high' ? 'from-orange-50 to-amber-50 border-l-4 border-orange-400' : 'from-slate-50 to-indigo-50 border-l-4 border-indigo-300'}">
+            <p class="font-medium text-gray-800 leading-relaxed">${em}${esc(i.text)}</p>
+            ${i.action ? `<p class="text-sm mt-3 text-indigo-800 font-medium">Next step: ${esc(i.action)}</p>` : ''}
+        </div>`;
+    }).join('');
     document.getElementById('insights-list').innerHTML = insightsHtml;
 }
 
 function renderProjections() {
     const table = document.getElementById('portfolio-table');
-    table.innerHTML = Object.entries(analysisData.portfolios).map(([key, p]) => 
+    const crores = (x) => {
+        const n = Number(x);
+        if (x == null || isNaN(n)) return '—';
+        return (n / 10000000).toFixed(2);
+    };
+    const p = analysisData.portfolios || {};
+    table.innerHTML = Object.entries(p).map(([key, row]) =>
         `<tr class="hover:bg-gray-50">
-            <td class="px-4 py-3 font-medium">${p.name}</td>
-            <td class="px-4 py-3 text-right">${p.return_pct}%</td>
-            <td class="px-4 py-3 text-right font-bold">${fmtINR(p.corpus / 10000000)} Cr</td>
-            <td class="px-4 py-3 text-right">${fmtINR(p.monthly_income)}</td>
+            <td class="px-4 py-3 font-medium">${row.name}</td>
+            <td class="px-4 py-3 text-right">${row.return_pct != null ? row.return_pct : '—'}%</td>
+            <td class="px-4 py-3 text-right font-bold">₹${crores(row.corpus)} Cr</td>
+            <td class="px-4 py-3 text-right">${fmtINR(row.monthly_income)}</td>
         </tr>`
     ).join('');
 }
 
 function renderScenarios() {
-    const p = analysisData.portfolios;
-    document.getElementById('current-corpus').textContent = fmtINR(p.balanced.corpus / 10000000) + ' Cr';
-    document.getElementById('optimized-corpus').textContent = fmtINR(p.optimized.corpus / 10000000) + ' Cr';
-    // Delayed calc simplified
-    document.getElementById('delayed-corpus').textContent = '₹' + Math.round(p.balanced.corpus * 0.3 / 10000000 * 12 * 1.5).toLocaleString('en-IN') + '/mo';
+    const p = analysisData.portfolios || {};
+    const cr = (x) => {
+        const n = Number(x);
+        if (x == null || isNaN(n)) return '—';
+        return (n / 10000000).toFixed(2);
+    };
+    if (p.balanced) document.getElementById('current-corpus').textContent = '₹' + cr(p.balanced.corpus) + ' Cr';
+    if (p.optimized) {
+        document.getElementById('optimized-corpus').textContent = '₹' + cr(p.optimized.corpus) + ' Cr';
+        if (p.balanced) {
+            const delta = p.optimized.corpus - p.balanced.corpus;
+            document.getElementById('optimized-delta').textContent = delta >= 0
+                ? '+' + fmtINR(delta) + ' vs balanced path'
+                : '';
+        }
+    }
 }
 
-// Load on page ready
+{% if config.DEBUG %}
+document.getElementById('dev-reset-btn')?.addEventListener('click', () => {
+    if (!confirm('Delete ALL users, transactions, accounts, and retirement data? Categories stay. This cannot be undone.')) return;
+    fetch('/dev/reset-data', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json())
+        .then(d => {
+            alert(d.message || d.error || 'Done');
+            if (d.status === 'success') window.location.href = '/auth/login';
+        })
+        .catch(() => alert('Request failed'));
+});
+{% endif %}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadAnalysis);
 } else {
