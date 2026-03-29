@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup category dropdowns with event delegation
     setupCategoryDropdowns();
+    
+    // Setup search filter
+    setupSearchFilter();
 });
 
 
@@ -137,6 +140,35 @@ function updateTransactionCategory(transactionId, categoryId, dropdown, original
         // Re-enable dropdown
         dropdown.disabled = false;
         dropdown.style.opacity = '1';
+    });
+}
+
+/**
+ * Setup live search filtering for transactions table rows
+ */
+function setupSearchFilter() {
+    const searchInput = document.getElementById('transaction-search');
+    if (!searchInput) return;
+    
+    console.log('✓ Search filter initialized');
+    
+    searchInput.addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase().trim();
+        const rows = document.querySelectorAll('#transaction-table-container tbody tr.ft-table-row');
+        
+        rows.forEach(row => {
+            const descCell = row.querySelector('td:nth-child(2)');
+            const methodCell = row.querySelector('td:nth-child(3)');
+            
+            const desc = descCell ? descCell.textContent.toLowerCase() : '';
+            const method = methodCell ? methodCell.textContent.toLowerCase() : '';
+            
+            if (desc.includes(query) || method.includes(query)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
     });
 }
 

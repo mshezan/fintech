@@ -247,6 +247,78 @@ def get_linked_accounts(user):
     return LinkedAccount.query.filter_by(user_id=user.id).order_by(LinkedAccount.creation_date.asc()).all()
 
 
+def _build_account_cards_data(user_accounts, linked_accounts):
+    """
+    Build a list of account dicts for the balance-card switcher, and determine
+    which account is the 'primary' one (salary > highest credit activity).
+
+    Returns (cards, primary_key) where:
+      cards      = list of dicts with keys id, name, masked, balance, label
+      primary_key = the 'id' value of the chosen primary card (or 'all')
+    """
+    cards = []
+
+    for la in linked_accounts:
+        actype = (la.api_account_type or '').lower()
+        label = la.api_account_type or 'Account'
+        bank_name = la.bank.name if la.bank else ''
+        display_name = bank_name + (' ' + label.title() if label else '') if bank_name else (la.account_nickname or label)
+        masked = la.masked_account_number or ''
+        # Format masked: show last 4 digits only if we have them
+        if masked and len(masked) >= 4:
+            masked_display = '**** **** **** ' + masked[-4:]
+        elif masked:
+            masked_display = '**** ' + masked
+        else:
+            masked_display = ''
+        balance = float(la.api_balance) if la.api_balance is not None else 0.0
+        cards.append({
+            'id': f'linked_{la.id}',
+            'name': display_name.strip(),
+            'nickname': la.account_nickname or display_name.strip(),
+            'masked': masked_display,
+            'balance': balance,
+            'label': label.title() if label else 'Account',
+            'actype': actype,
+            'tx_count': len(la.transactions),
+        })
+
+    for ba in user_accounts:
+        label = ba.account_type or 'Account'
+        masked_display = ''
+        balance = float(ba.balance) if ba.balance is not None else 0.0
+        cards.append({
+            'id': str(ba.id),
+            'name': ba.account_name or 'Account',
+            'nickname': ba.account_name or 'Account',
+            'masked': masked_display,
+            'balance': balance,
+            'label': label.title(),
+            'actype': label.lower(),
+            'tx_count': len(ba.transactions),
+        })
+
+    if not cards:
+        return [], 'all'
+
+    # Determine primary: prefer salary/current account, else highest tx_count
+    salary_keywords = ('salary', 'current', 'savings')
+    primary_card = None
+    for kw in salary_keywords:
+        for c in cards:
+            if kw in c['actype'] or kw in c['name'].lower() or kw in c['label'].lower():
+                primary_card = c
+                break
+        if primary_card:
+            break
+
+    if primary_card is None:
+        # Fall back to highest transaction count
+        primary_card = max(cards, key=lambda c: c['tx_count'])
+
+    return cards, primary_card['id']
+
+
 RECONNECT_LINK_MSG = "This account needs to be reconnected."
 
 
@@ -547,16 +619,22 @@ def dashboard():
     try:
         user_accounts = get_user_accounts(current_user)
         linked_accounts = get_linked_accounts(current_user)
+        account_cards, primary_account_key = _build_account_cards_data(user_accounts, linked_accounts)
         
         if not user_accounts and not linked_accounts:
             return render_template('dashboard.html',
                                  page_name='dashboard',
                                  user_accounts=[],
                                  linked_accounts=[],
+                                 account_cards=[],
+                                 primary_account_key='all',
+                                 total_balance=0,
                                  selected_account_id='all',
                                  selected_month=datetime.now().strftime('%Y-%m'),
                                  all_months=[datetime.now().strftime('%Y-%m')],
                                  total_spending=0,
+                                 total_income=0,
+                                 avg_transaction=0,
                                  transaction_count=0,
                                  top_category='N/A',
                                  account_type='none',
@@ -571,85 +649,54 @@ def dashboard():
             month = datetime.now().month
         
         # Calculate stats based on account type
+        base_filter = []
         if account_type == 'all':
-            total_spending = db.session.query(
-                func.sum(Transaction.amount)
-            ).filter(
-                Transaction.user_id == current_user.id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month,
-                _debit_only_filter(),
-            ).scalar() or 0
-            
-            transaction_count = Transaction.query.filter(
-                Transaction.user_id == current_user.id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
-            ).count()
-            
-            top_category = db.session.query(
-                Category.name,
-                func.sum(Transaction.amount).label('total')
-            ).join(Transaction).filter(
-                Transaction.user_id == current_user.id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month,
-                _debit_only_filter(),
-            ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
-        
+            base_filter = [Transaction.user_id == current_user.id]
         elif account_type == 'legacy':
-            total_spending = db.session.query(
-                func.sum(Transaction.amount)
-            ).filter(
-                Transaction.bank_account_id == account_id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month,
-                _debit_only_filter(),
-            ).scalar() or 0
-            
-            transaction_count = Transaction.query.filter(
-                Transaction.bank_account_id == account_id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
-            ).count()
-            
-            top_category = db.session.query(
-                Category.name,
-                func.sum(Transaction.amount).label('total')
-            ).join(Transaction).filter(
-                Transaction.bank_account_id == account_id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month,
-                _debit_only_filter(),
-            ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
-        
+            base_filter = [Transaction.bank_account_id == account_id]
         else:  # linked
-            total_spending = db.session.query(
-                func.sum(Transaction.amount)
-            ).filter(
-                Transaction.account_id == account_id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month,
-                _debit_only_filter(),
-            ).scalar() or 0
-            
-            transaction_count = Transaction.query.filter(
-                Transaction.account_id == account_id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month
-            ).count()
-            
-            top_category = db.session.query(
-                Category.name,
-                func.sum(Transaction.amount).label('total')
-            ).join(Transaction).filter(
-                Transaction.account_id == account_id,
-                extract('year', Transaction.date) == year,
-                extract('month', Transaction.date) == month,
-                _debit_only_filter(),
-            ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
+            base_filter = [Transaction.account_id == account_id]
+
+        total_spending = db.session.query(
+            func.sum(Transaction.amount)
+        ).filter(
+            *base_filter,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month,
+            _debit_only_filter(),
+        ).scalar() or 0
         
+        total_income = db.session.query(
+            func.sum(Transaction.amount)
+        ).filter(
+            *base_filter,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month,
+            Transaction.transaction_type == 'credit',
+        ).scalar() or 0
+
+        transaction_count = Transaction.query.filter(
+            *base_filter,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month
+        ).count()
+
+        top_category = db.session.query(
+            Category.name,
+            func.sum(Transaction.amount).label('total')
+        ).join(Transaction).filter(
+            *base_filter,
+            extract('year', Transaction.date) == year,
+            extract('month', Transaction.date) == month,
+            _debit_only_filter(),
+        ).group_by(Category.name).order_by(func.sum(Transaction.amount).desc()).first()
+        
+        recent_transactions = Transaction.query.filter(
+            *base_filter
+        ).order_by(Transaction.date.desc()).limit(5).all()
+
         top_category_name = top_category[0] if top_category else 'N/A'
+        avg_transaction = total_spending / transaction_count if transaction_count > 0 else 0
         
         # Format selected_account_id for template
         if account_type == 'linked':
@@ -659,15 +706,23 @@ def dashboard():
         else:
             display_account_id = 'all'
         
+        total_balance = sum(c['balance'] for c in account_cards)
+
         return render_template('dashboard.html',
                              page_name='dashboard',
                              user_accounts=user_accounts,
                              linked_accounts=linked_accounts,
+                             account_cards=account_cards,
+                             primary_account_key=primary_account_key,
+                             total_balance=total_balance,
                              selected_account_id=display_account_id,
                              selected_month=selected_month,
                              all_months=all_months,
                              total_spending=total_spending,
+                             total_income=total_income,
                              transaction_count=transaction_count,
+                             avg_transaction=avg_transaction,
+                             recent_transactions=recent_transactions,
                              top_category=top_category_name,
                              account_type=account_type,
                              bank_linked=True)
@@ -681,10 +736,15 @@ def dashboard():
                              page_name='dashboard',
                              user_accounts=[],
                              linked_accounts=[],
+                             account_cards=[],
+                             primary_account_key='all',
+                             total_balance=0,
                              selected_account_id='all',
                              selected_month=datetime.now().strftime('%Y-%m'),
                              all_months=[datetime.now().strftime('%Y-%m')],
                              total_spending=0,
+                             total_income=0,
+                             avg_transaction=0,
                              transaction_count=0,
                              top_category='N/A',
                              account_type='none',
@@ -1444,6 +1504,61 @@ def spending_by_category():
             'labels': [],
             'data': [],
         }), 200
+
+
+@app.route('/api/monthly-activity')
+@login_required
+def monthly_activity():
+    """Get aggregated spending and income by month for the dashboard graph."""
+    try:
+        account_param = request.args.get('account', 'all')
+        account_type, account_id = parse_account_param(account_param)
+        
+        base_filter = [Transaction.user_id == current_user.id]
+        if account_type == 'legacy':
+            base_filter = [Transaction.bank_account_id == account_id]
+        elif account_type == 'linked':
+            base_filter = [Transaction.account_id == account_id]
+            
+        data = db.session.query(
+            func.strftime('%Y-%m', Transaction.date).label('month'),
+            Transaction.transaction_type,
+            func.sum(Transaction.amount).label('total')
+        ).filter(
+            *base_filter
+        ).group_by(
+            'month',
+            Transaction.transaction_type
+        ).order_by('month').all()
+        
+        months = sorted(list(set([row[0] for row in data if row[0]])))
+        if len(months) > 6:
+            months = months[-6:]
+            
+        income_map = {row[0]: float(row[2]) for row in data if row[0] and row[1] == 'credit'}
+        expense_map = {row[0]: float(row[2]) for row in data if row[0] and (row[1] == 'debit' or row[1] is None)}
+        
+        income_data = [income_map.get(m, 0.0) for m in months]
+        expense_data = [expense_map.get(m, 0.0) for m in months]
+        
+        labels = [datetime.strptime(m, '%Y-%m').strftime('%b %Y') for m in months] if months else []
+        
+        return jsonify({
+            'status': 'success',
+            'labels': labels,
+            'income': income_data,
+            'expense': expense_data
+        })
+    except Exception as e:
+        print(f"Monthly activity API error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'labels': [],
+            'income': [],
+            'expense': []
+        })
 
 
 @app.route('/api/transactions/<int:tx_id>/categorize', methods=['POST'])

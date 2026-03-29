@@ -11,12 +11,9 @@ let spendingChart = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✓ Dashboard page loaded');
     
-    const selectedMonth = document.getElementById('month-selector')?.value;
     const selectedAccount = getSelectedAccountFromURL();
     
-    if (selectedMonth) {
-        renderChart(selectedMonth, selectedAccount);
-    }
+    renderChart(undefined, selectedAccount); // Month is not required by API
     
     setupMonthSelector();
 });
@@ -64,7 +61,7 @@ function renderChart(month, account) {
     console.log('Rendering chart for month:', month, 'account:', account);
     
     // Build fetch URL with account parameter
-    const url = `/api/spending-by-category?month=${month}&account=${account}`;
+    const url = `/api/monthly-activity?account=${account}`;
     
     fetch(url)
         .then(response => {
@@ -77,9 +74,11 @@ function renderChart(month, account) {
                 return;
             }
             const labels = Array.isArray(data.labels) ? data.labels : [];
-            const series = Array.isArray(data.data) ? data.data : [];
+            const incomeData = Array.isArray(data.income) ? data.income : [];
+            const expenseData = Array.isArray(data.expense) ? data.expense : [];
+            
             if (labels.length > 0) {
-                displayChart(labels, series.map(v => (Number.isFinite(Number(v)) ? Number(v) : 0)));
+                displayChart(labels, incomeData, expenseData);
             } else {
                 displayEmptyChart();
             }
@@ -94,9 +93,10 @@ function renderChart(month, account) {
 /**
  * Display chart with data
  * @param {Array} labels - Category names
- * @param {Array} data - Spending amounts
+ * @param {Array} incomeData - Income amounts
+ * @param {Array} expenseData - Expense amounts
  */
-function displayChart(labels, data) {
+function displayChart(labels, incomeData, expenseData) {
     const ctx = document.getElementById('spending-chart');
     if (!ctx) {
         console.error('Chart canvas not found');
@@ -110,47 +110,40 @@ function displayChart(labels, data) {
         spendingChart.destroy();
     }
     
-    console.log('Creating new chart with labels:', labels, 'and data:', data);
+    console.log('Creating new chart with labels:', labels);
     
     // Create new chart
     spendingChart = new Chart(canvasCtx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: labels,
-            datasets: [{
-                label: 'Spending (₹)',
-                data: data,
-                backgroundColor: [
-                    '#FF6384',
-                    '#36A2EB',
-                    '#FFCE56',
-                    '#4BC0C0',
-                    '#9966FF',
-                    '#FF9F40',
-                    '#C9CBCF',
-                    '#8B5CF6',
-                    '#10B981',
-                    '#F59E0B',
-                    '#EC4899',
-                    '#6366F1'
-                ],
-                borderWidth: 3,
-                borderColor: '#ffffff',
-                hoverOffset: 15
-            }]
+            datasets: [
+                {
+                    label: 'Income',
+                    data: incomeData,
+                    backgroundColor: 'rgba(96, 165, 250, 0.75)',
+                    borderColor: 'rgba(96, 165, 250, 0.9)',
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    borderSkipped: false
+                },
+                {
+                    label: 'Expense',
+                    data: expenseData,
+                    backgroundColor: 'rgba(248, 113, 113, 0.75)',
+                    borderColor: 'rgba(248, 113, 113, 0.9)',
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    borderSkipped: false
+                }
+            ]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    position: 'bottom',
-                    labels: {
-                        padding: 20,
-                        font: { size: 13, weight: '600' },
-                        usePointStyle: true,
-                        pointStyle: 'circle'
-                    }
+                    display: false
                 },
                 tooltip: {
                     backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -160,16 +153,42 @@ function displayChart(labels, data) {
                     cornerRadius: 8,
                     callbacks: {
                         label: function(context) {
-                            let label = context.label || '';
+                            let label = context.dataset.label || '';
                             if (label) label += ': ';
-                            label += '₹' + context.parsed.toFixed(2);
-                            
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = ((context.parsed / total) * 100).toFixed(1);
-                            label += ' (' + percentage + '%)';
-                            
+                            const v = context.parsed.y;
+                            if (v >= 100000)  label += '₹' + (v / 100000).toFixed(2) + 'L';
+                            else if (v >= 1000) label += '₹' + (v / 1000).toFixed(1) + 'k';
+                            else label += '₹' + v.toFixed(2);
                             return label;
                         }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.05)'
+                    },
+                    ticks: {
+                        color: '#a1a1aa',
+                        font: { size: 11 },
+                        maxTicksLimit: 5,
+                        callback: function(value) {
+                            if (value === 0) return '0';
+                            if (value >= 10000000) return '₹' + (value / 10000000).toFixed(1) + 'Cr';
+                            if (value >= 100000)   return '₹' + (value / 100000).toFixed(1) + 'L';
+                            if (value >= 1000)     return '₹' + (value / 1000).toFixed(0) + 'k';
+                            return '₹' + value;
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        color: '#a1a1aa'
                     }
                 }
             }
@@ -184,6 +203,9 @@ function displayChart(labels, data) {
  * Display empty chart state (no data available)
  */
 function displayEmptyChart() {
+    const legend = document.getElementById('chart-legend');
+    if (legend) legend.style.display = 'none';
+
     const ctx = document.getElementById('spending-chart');
     if (!ctx) return;
     
@@ -194,21 +216,25 @@ function displayEmptyChart() {
     }
     
     spendingChart = new Chart(canvasCtx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: ['No Data'],
             datasets: [{
-                data: [1],
-                backgroundColor: ['#E5E7EB'],
+                data: [0],
+                backgroundColor: ['#3f3f46'],
                 borderWidth: 0
             }]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
                 tooltip: { enabled: false }
+            },
+            scales: {
+                y: { display: false, max: 1 },
+                x: { display: false }
             }
         }
     });

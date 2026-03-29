@@ -3,80 +3,88 @@
 {% block title %}Transactions - FinTrack{% endblock %}
 
 {% block content %}
-<div class="space-y-8">
-    
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl shadow-lg p-8 text-white">
-        <h1 class="text-4xl font-bold">Transactions</h1>
-        <p class="mt-2 text-purple-100">View and manage your spending for <span class="font-semibold">{{ selected_month }}</span></p>
+<div class="mx-auto max-w-7xl space-y-6 lg:space-y-8 pb-10">
+    <div class="flex items-center justify-between mb-2">
+        <div>
+            <p class="text-[14px] text-[#71717a]">Activity for {{ selected_month }}</p>
+        </div>
     </div>
 
-    <!-- Month Selector -->
-    <div class="bg-white rounded-xl shadow-md p-6">
-        <div class="flex items-center justify-between flex-wrap gap-4">
+    <!-- Month filter card -->
+    <div class="ft-card flex flex-wrap items-center justify-between gap-4 py-5 shadow-none">
+        <div>
+            <h2 class="text-[14px] font-medium text-white">Filter by month</h2>
+            <p class="mt-1 text-[12px] text-[#71717a]">Choose a period to review transactions</p>
+        </div>
+        <select id="month-selector"
+                class="ft-input min-w-[12rem] cursor-pointer bg-[var(--ft-elevated)] py-2 pl-4 pr-9 text-[13px] font-medium text-white border-none focus:ring-1 focus:ring-[#7c3aed]">
+            {% for month in all_months %}
+                <option value="{{ month }}" {% if month == selected_month %}selected{% endif %}>{{ month }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Table card -->
+    <div class="ft-card flex flex-col p-6 overflow-hidden">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
             <div>
-                <h2 class="text-lg font-semibold text-gray-900">📅 Filter by Month</h2>
-                <p class="text-sm text-gray-600 mt-1">Select a different month to view transactions</p>
+                <h2 class="text-[16px] font-medium text-white">All Transactions</h2>
+                <p class="mt-1 text-[13px] text-[#71717a]">{{ transactions|length }} items · {{ selected_month }}</p>
             </div>
-            <select id="month-selector" 
-                    class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white font-medium text-gray-900 min-w-48">
-                {% for month in all_months %}
-                    <option value="{{ month }}" {% if month == selected_month %}selected{% endif %}>
-                        {{ month }}
-                    </option>
-                {% endfor %}
-            </select>
+            <div class="relative w-full sm:min-w-[280px] sm:w-auto">
+                <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-[14px] h-[14px] text-[#8b8b93]"></i>
+                <input type="text" id="transaction-search" placeholder="Search by name, description..." class="ft-input w-full bg-[#0f0f11] py-2 pl-10 pr-4 text-[13px] border border-white/[0.08] focus:border-violet-500/50 rounded-xl placeholder:text-[#52525b] transition-colors">
+            </div>
         </div>
-    </div>
 
-    <!-- Transactions Table -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="px-8 py-6 border-b border-gray-200 bg-gray-50">
-            <h2 class="text-2xl font-bold text-gray-900">💳 Transaction List</h2>
-            <p class="text-sm text-gray-600 mt-1">{{ transactions|length }} transactions for {{ selected_month }}</p>
-        </div>
-        
-        <!-- Responsive table wrapper -->
         <div class="overflow-x-auto">
-            <table id="transaction-table-container" class="w-full">
-                <thead class="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                        <th class="px-4 sm:px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
-                        <th class="px-4 sm:px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
-                        <th class="px-4 sm:px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Amount</th>
-                        <th class="px-4 sm:px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Bank Account</th>
-                        <th class="px-4 sm:px-8 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Category</th>
+            <table id="transaction-table-container" class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-[#27272a] text-[12px] font-medium text-[#71717a]">
+                        <th class="pb-3 pr-6 font-medium">Date</th>
+                        <th class="pb-3 pr-6 font-medium">Description</th>
+                        <th class="pb-3 pr-6 font-medium">Method</th>
+                        <th class="pb-3 pr-6 font-medium">Amount</th>
+                        <th class="pb-3 pr-6 font-medium text-center">Status</th>
+                        <th class="pb-3 font-medium">Category</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-200">
+                <tbody class="text-[14px]">
                     {% if transactions %}
                         {% for transaction in transactions %}
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-4 sm:px-8 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <tr class="ft-table-row border-b border-[var(--ft-border)]">
+                            <td class="whitespace-nowrap py-5 pr-6 text-[#a1a1aa]">
                                 {{ transaction.date.strftime('%d %b %Y') }}
                             </td>
-                            <td class="px-4 sm:px-8 py-4 text-sm text-gray-900">
-                                <div class="max-w-xs truncate" title="{{ transaction.description }}">
-                                    {{ transaction.description }}
+                            <td class="py-5 pr-6">
+                                <div class="max-w-xs">
+                                    <p class="font-medium text-white truncate" title="{{ transaction.description }}">{{ transaction.description }}</p>
+                                    {% if transaction.category %}
+                                    <p class="text-[11px] text-[#71717a] mt-0.5">{{ transaction.category.name }}</p>
+                                    {% elif transaction.account_id or transaction.bank_account_id %}
+                                    <p class="text-[11px] text-[#52525b] mt-0.5">Uncategorized</p>
+                                    {% endif %}
                                 </div>
                             </td>
-                            <td class="px-4 sm:px-8 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                            <td class="whitespace-nowrap py-5 pr-6 text-[#a1a1aa]">
+                                {% set tx_desc = (transaction.description or '') | lower %}
+                                {% if transaction.mode == 'UPI' or 'upi' in tx_desc %}
+                                    <div class="flex items-center gap-1.5"><i data-lucide="smartphone" class="w-4 h-4"></i>UPI</div>
+                                {% elif transaction.mode == 'Bank Transfer' or 'imps' in tx_desc or 'neft' in tx_desc or 'rtgs' in tx_desc %}
+                                    <div class="flex items-center gap-1.5"><i data-lucide="building" class="w-4 h-4"></i>Bank Transfer</div>
+                                {% else %}
+                                    <div class="flex items-center gap-1.5"><i data-lucide="credit-card" class="w-4 h-4"></i>Card</div>
+                                {% endif %}
+                            </td>
+                            <td class="whitespace-nowrap py-5 pr-6 font-medium text-white">
                                 ₹{{ "%.2f"|format(transaction.amount) }}
                             </td>
-                            <td class="px-4 sm:px-8 py-4 whitespace-nowrap text-sm">
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
-                                    {% if transaction.linked_account %}
-                                        {{ transaction.linked_account.account_nickname }}
-                                    {% elif transaction.bank_account %}
-                                        {{ transaction.bank_account.account_name }}
-                                    {% else %}
-                                        🏦 Unknown
-                                    {% endif %}
-                                </span>
+                            <td class="whitespace-nowrap py-5 pr-6 text-center">
+                                <span class="inline-flex rounded-full bg-emerald-600/20 border border-emerald-500/30 px-3 py-0.5 text-[11px] text-emerald-300 font-medium">Complete</span>
                             </td>
-                            <td class="px-4 sm:px-8 py-4 whitespace-nowrap text-sm">
-                                <select data-tx-id="{{ transaction.id }}" 
-                                        class="category-select px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium text-gray-900 bg-white hover:border-indigo-400 transition-colors cursor-pointer">
+                            <td class="whitespace-nowrap px-6 py-5">
+                                <select data-tx-id="{{ transaction.id }}"
+                                        class="category-select ft-input cursor-pointer bg-[var(--ft-elevated)] py-1.5 pl-3 pr-8 text-[12px] font-medium text-white border-none focus:ring-1 focus:ring-[#7c3aed]">
                                     <option value="">Uncategorized</option>
                                     {% for category in categories %}
                                         <option value="{{ category.id }}" {% if transaction.category_id == category.id %}selected{% endif %}>
@@ -89,13 +97,11 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="5" class="px-8 py-12 text-center">
-                                <div class="flex flex-col items-center justify-center">
-                                    <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                                    </svg>
-                                    <p class="text-gray-500 text-lg font-medium">No transactions found</p>
-                                    <p class="text-gray-400 text-sm mt-2">Try a different month or link your bank account</p>
+                            <td colspan="6" class="px-8 py-16 text-center">
+                                <div class="flex flex-col items-center justify-center text-[#71717a]">
+                                    <i data-lucide="inbox" class="mb-4 h-12 w-12 text-[#a1a1aa]"></i>
+                                    <p class="text-[16px] font-medium text-white">No transactions found</p>
+                                    <p class="mt-2 text-[13px]">Try another month or link your bank account</p>
                                 </div>
                             </td>
                         </tr>
@@ -104,7 +110,6 @@
             </table>
         </div>
     </div>
-
 </div>
 
 <script src="{{ url_for('static', filename='js/transactions.js') }}"></script>

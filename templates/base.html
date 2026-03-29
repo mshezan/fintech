@@ -1,238 +1,213 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}FinTrack{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ft: {
+                            bg: '#000000',
+                            card: '#161618',
+                            muted: '#8b8b93',
+                            border: 'transparent',
+                        },
+                    },
+                    boxShadow: {
+                        'ft-card': '0 4px 20px rgba(0, 0, 0, 0.4)',
+                        'ft-glow': '0 0 24px rgba(204, 132, 255, 0.4)',
+                    },
+                },
+            },
+        };
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/fintech-theme.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    {% block head_extra %}{% endblock %}
 </head>
-<body class="bg-gray-50">
-    
-    <!-- Navigation Bar -->
-    <nav class="bg-white shadow-lg border-b-2 border-indigo-500">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-16">
-                
-                <!-- Logo -->
-                <div class="flex items-center space-x-3">
-                    <div class="text-3xl">💰</div>
-                    <span class="text-2xl font-bold text-indigo-600">FinTrack</span>
-                </div>
-                
-                <!-- Account Selector (Global) -->
-                {% if current_user.is_authenticated %}
-                <div class="hidden lg:flex items-center space-x-3">
-                    <select id="global-account-selector" 
-                            class="px-3 py-2 text-sm border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white font-medium text-gray-900 hover:border-indigo-400 transition-colors cursor-pointer">
-                        <option value="all" {% if selected_account_id == 'all' %}selected{% endif %}>🏦 All Accounts</option>
-                        
-                        <!-- Legacy BankAccounts -->
-                        {% if user_accounts %}
-                            {% for account in user_accounts %}
-                                <option value="{{ account.id }}" {% if selected_account_id == account.id %}selected{% endif %}>
-                                    {{ account.account_name }} (₹{{ "%.0f"|format(account.balance) }})
-                                </option>
-                            {% endfor %}
-                        {% endif %}
-                        
-                        <!-- NEW: LinkedAccounts -->
-                        {% if linked_accounts %}
-                            {% for account in linked_accounts %}
-                                <option value="linked_{{ account.id }}">
-                                    {{ account.account_nickname }} - {{ account.bank_name }}
-                                </option>
-                            {% endfor %}
-                        {% endif %}
-                    </select>
-                </div>
+<body class="min-h-full bg-[var(--ft-bg)] text-[var(--ft-text)] antialiased">
+
+{% set pn = page_name|default('') %}
+{% set _sel_acct = selected_account_id|default('all') %}
+
+{% if current_user.is_authenticated %}
+<div id="sidebar-backdrop" class="fixed inset-0 z-40 bg-black/80 hidden md:hidden" aria-hidden="true"></div>
+
+<aside id="app-sidebar" class="fixed left-0 top-0 z-50 flex h-screen w-[80px] flex-col bg-[var(--ft-bg)] pt-6 pb-6 transition-transform duration-200 ease-out -translate-x-full md:translate-x-0">
+    <div class="flex flex-col items-center pb-8 relative group">
+        <button type="button" id="profile-menu-btn" class="relative flex h-10 w-10 items-center justify-center rounded-full shadow-lg bg-[#161618] border border-white/[0.08] text-white font-medium hover:bg-white/[0.04] transition-colors" title="{{ current_user.full_name or current_user.email }}">
+            {{ (current_user.full_name or current_user.email)[0]|upper }}
+            <span class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[var(--ft-bg)] bg-emerald-500"></span>
+        </button>
+        <!-- Dropdown Menu -->
+        <div id="profile-dropdown" class="absolute left-14 top-0 w-48 rounded-xl border border-white/[0.08] bg-[#161618] p-1 shadow-2xl hidden z-50 transform origin-top-left -translate-y-2 transition-all duration-200">
+            <div class="px-3 py-2.5 border-b border-white/[0.06] mb-1">
+                <p class="text-[13px] font-medium text-white truncate">{{ current_user.full_name or current_user.email.split('@')[0] }}</p>
+                <p class="text-[11px] text-[#8b8b93] mt-0.5 truncate">{{ current_user.email }}</p>
+                {% if current_user.identity_id %}
+                <p class="text-[10px] text-[#52525b] mt-1 font-mono tracking-wider">
+                    Linked ID: {{ current_user.identity_id[:3] }}•••{{ current_user.identity_id[-4:] }}
+                </p>
                 {% endif %}
-                
-                <!-- Desktop Navigation -->
-                <div class="hidden md:flex items-center space-x-2">
-                    {% if current_user.is_authenticated %}
-                        <a href="{{ url_for('dashboard') }}" 
-                           class="px-4 py-2 rounded-md text-sm font-medium transition-colors
-                                  {% if page_name == 'dashboard' %}bg-indigo-100 text-indigo-700{% else %}text-gray-700 hover:bg-gray-100{% endif %}">
-                            📊 Dashboard
-                        </a>
-                        <a href="{{ url_for('transactions') }}" 
-                           class="px-4 py-2 rounded-md text-sm font-medium transition-colors
-                                  {% if page_name == 'transactions' %}bg-indigo-100 text-indigo-700{% else %}text-gray-700 hover:bg-gray-100{% endif %}">
-                            📋 Transactions
-                        </a>
-                        <a href="{{ url_for('accounts') }}" 
-                           class="px-4 py-2 rounded-md text-sm font-medium transition-colors
-                                  {% if page_name == 'accounts' %}bg-indigo-100 text-indigo-700{% else %}text-gray-700 hover:bg-gray-100{% endif %}">
-                            💳 Accounts
-                        </a>
-                        <a href="{{ url_for('retirement') }}" 
-                           class="px-4 py-2 rounded-md text-sm font-medium transition-colors
-                                  {% if page_name == 'retirement' %}bg-indigo-100 text-indigo-700{% else %}text-gray-700 hover:bg-gray-100{% endif %}">
-                            🏆 Retirement
-                        </a>
-                        <div class="border-l border-gray-300 h-6 mx-2"></div>
-                        <span class="text-sm text-gray-600 px-2">{{ current_user.email }}</span>
-                        <a href="{{ url_for('auth.logout') }}" 
-                           class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm font-medium transition-colors">
-                            Logout
-                        </a>
-                    {% else %}
-                        <a href="{{ url_for('auth.login') }}" 
-                           class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors">
-                            Login
-                        </a>
-                        <a href="{{ url_for('auth.register') }}" 
-                           class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm font-medium transition-colors">
-                            Register
-                        </a>
-                    {% endif %}
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="flex items-center gap-2 px-3 py-2 text-[13px] text-[#8b8b93] hover:text-red-400 hover:bg-white/[0.04] rounded-lg transition-colors w-full text-left">
+                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                Logout
+            </a>
+        </div>
+    </div>
+    <nav class="flex flex-1 flex-col items-center justify-center gap-6 px-2" aria-label="Main">
+        <a href="{{ url_for('dashboard') }}" class="flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 {% if pn == 'dashboard' %}bg-white text-black shadow-md hover:bg-white{% else %}text-[#8b8b93] hover:text-white hover:bg-white/[0.04]{% endif %}" title="Dashboard">
+            <i data-lucide="layout-dashboard" class="w-5 h-5" stroke-width="2"></i>
+        </a>
+        <a href="{{ url_for('transactions') }}" class="flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 {% if pn == 'transactions' %}bg-white text-black shadow-md hover:bg-white{% else %}text-[#8b8b93] hover:text-white hover:bg-white/[0.04]{% endif %}" title="Transactions">
+            <i data-lucide="credit-card" class="w-5 h-5" stroke-width="2"></i>
+        </a>
+        <a href="{{ url_for('accounts') }}" class="flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 {% if pn == 'accounts' %}bg-white text-black shadow-md hover:bg-white{% else %}text-[#8b8b93] hover:text-white hover:bg-white/[0.04]{% endif %}" title="Accounts">
+            <i data-lucide="pie-chart" class="w-5 h-5" stroke-width="2"></i>
+        </a>
+        <a href="{{ url_for('retirement') }}" class="flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 {% if pn == 'retirement' %}bg-white text-black shadow-md hover:bg-white{% else %}text-[#8b8b93] hover:text-white hover:bg-white/[0.04]{% endif %}" title="Retirement">
+            <i data-lucide="trending-up" class="w-5 h-5" stroke-width="2"></i>
+        </a>
+
+    </nav>
+
+</aside>
+{% endif %}
+
+<div class="flex min-h-screen flex-col {% if current_user.is_authenticated %}md:pl-[80px]{% endif %}">
+
+{% if current_user.is_authenticated %}
+    <header class="sticky top-0 z-30 bg-[var(--ft-bg)]">
+        <div class="flex h-[80px] items-center justify-between gap-3 px-6 sm:px-8 lg:px-10">
+            <div class="flex min-w-0 items-center gap-3">
+                <button type="button" id="sidebar-open-btn" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-zinc-300 md:hidden" aria-label="Open menu">
+                    <i data-lucide="menu" class="h-5 w-5"></i>
+                </button>
+                <div class="min-w-0">
+                    <h1 class="truncate text-[22px] font-medium text-white tracking-wide">{% block page_heading %}{% if pn == 'dashboard' %}Dashboard{% elif pn == 'transactions' %}Transactions{% elif pn == 'accounts' %}Accounts{% elif pn == 'retirement' %}Retirement{% else %}FinTrack{% endif %}{% endblock %}</h1>
                 </div>
-                
-                <!-- Mobile Menu Button -->
-                <div class="md:hidden">
-                    <button id="mobile-menu-btn" class="text-gray-700 hover:text-indigo-600 focus:outline-none">
-                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                        </svg>
-                    </button>
-                </div>
+            </div>
+            
+            <div class="flex shrink-0 items-center justify-end gap-3 sm:gap-4 ml-auto">
+
+
             </div>
         </div>
         
-        <!-- Mobile Menu -->
-        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200 bg-white">
-            <div class="px-4 pt-2 pb-3 space-y-1">
-                {% if current_user.is_authenticated %}
-                    <!-- Mobile Account Selector -->
-                    <div class="mb-3">
-                        <select id="mobile-account-selector" 
-                                class="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-medium">
-                            <option value="all">🏦 All Accounts</option>
-                            {% if user_accounts %}
-                                {% for account in user_accounts %}
-                                    <option value="{{ account.id }}">{{ account.account_name }}</option>
-                                {% endfor %}
-                            {% endif %}
-                            {% if linked_accounts %}
-                                {% for account in linked_accounts %}
-                                    <option value="linked_{{ account.id }}">{{ account.account_nickname }} - {{ account.bank_name }}</option>
-                                {% endfor %}
-                            {% endif %}
-                        </select>
-                    </div>
-                    
-                    <a href="{{ url_for('dashboard') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">📊 Dashboard</a>
-                    <a href="{{ url_for('transactions') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">📋 Transactions</a>
-                    <a href="{{ url_for('accounts') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">💳 Accounts</a>
-                    <a href="{{ url_for('retirement') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">🏆 Retirement</a>
-                    <div class="border-t border-gray-200 my-2"></div>
-                    <div class="px-3 py-2 text-sm text-gray-600">{{ current_user.email }}</div>
-                    <a href="{{ url_for('auth.logout') }}" class="block px-3 py-2 rounded-md text-base font-medium text-white bg-red-600 hover:bg-red-700">Logout</a>
-                {% else %}
-                    <a href="{{ url_for('auth.login') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">Login</a>
-                    <a href="{{ url_for('auth.register') }}" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100">Register</a>
-                {% endif %}
+    </header>
+{% else %}
+    <header class="border-b border-white/[0.06] bg-[#0f0f0f]/95 backdrop-blur-md">
+        <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+            <a href="{{ url_for('auth.login') }}" class="flex items-center gap-2 text-lg font-bold tracking-tight">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-blue-500 text-base shadow-md" aria-hidden="true">💰</span>
+                <span class="ft-gradient-text">FinTrack</span>
+            </a>
+            <div class="flex items-center gap-2">
+                <a href="{{ url_for('auth.login') }}" class="rounded-full border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.08]">Login</a>
+                <a href="{{ url_for('auth.register') }}" class="ft-btn-primary rounded-full px-4 py-2 text-sm font-semibold text-white shadow-ft-glow">Register</a>
             </div>
         </div>
-    </nav>
-    
-    <!-- Flash Messages -->
+    </header>
+{% endif %}
+
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+            <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-4">
                 {% for category, message in messages %}
-                    <div data-flash-category="{{ category }}" class="rounded-lg p-4 mb-4 
-                                {% if category == 'success' %}bg-green-100 border-l-4 border-green-500 text-green-700
-                                {% elif category == 'error' %}bg-red-100 border-l-4 border-red-500 text-red-700
-                                {% else %}bg-blue-100 border-l-4 border-blue-500 text-blue-700{% endif %}">
-                        <div class="flex items-center">
-                            <span class="text-lg mr-2">
-                                {% if category == 'success' %}✅{% elif category == 'error' %}❌{% else %}ℹ️{% endif %}
-                            </span>
-                            <p class="font-medium">{{ message }}</p>
+                    <div data-flash-category="{{ category }}" class="mb-4 rounded-2xl border px-4 py-3 text-sm font-medium
+                        {% if category == 'success' %}border-emerald-500/30 bg-emerald-500/10 text-emerald-200
+                        {% elif category == 'error' %}border-red-500/30 bg-red-500/10 text-red-200
+                        {% else %}border-blue-500/30 bg-blue-500/10 text-blue-200{% endif %}">
+                        <div class="flex items-center gap-2">
+                            <span aria-hidden="true">{% if category == 'success' %}✅{% elif category == 'error' %}❌{% else %}ℹ️{% endif %}</span>
+                            <p>{{ message }}</p>
                         </div>
                     </div>
                 {% endfor %}
             </div>
         {% endif %}
     {% endwith %}
-    
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 {% if not current_user.is_authenticated %}mx-auto max-w-7xl w-full{% endif %}">
         {% block content %}{% endblock %}
     </main>
-    
-    <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 mt-12">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div class="text-center text-gray-600 text-sm">
-                <p>© 2025 FinTrack - Your Personal Finance Manager</p>
-                <p class="mt-2">Built with Flask, Tailwind CSS, and Chart.js</p>
-            </div>
+
+    <footer class="border-t border-white/[0.06] bg-[#0f0f0f] py-6">
+        <div class="mx-auto max-w-7xl px-4 text-center text-sm text-zinc-500 sm:px-6 lg:px-8">
+            <p>© 2026 FinTrack</p>
+            <p class="mt-1 text-xs text-zinc-600">Flask · Tailwind · Chart.js</p>
         </div>
     </footer>
-    
-    <!-- Mobile Menu Toggle Script -->
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-        const mobileMenu = document.getElementById('mobile-menu');
-        
-        if (mobileMenuBtn && mobileMenu) {
-            mobileMenuBtn.addEventListener('click', function() {
-                mobileMenu.classList.toggle('hidden');
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var sidebar = document.getElementById('app-sidebar');
+    var backdrop = document.getElementById('sidebar-backdrop');
+    var openBtn = document.getElementById('sidebar-open-btn');
+
+    function closeSidebar() {
+        if (!sidebar) return;
+        sidebar.classList.add('-translate-x-full');
+        if (backdrop) { backdrop.classList.add('hidden'); }
+        document.body.classList.remove('overflow-hidden');
+    }
+    function openSidebar() {
+        if (!sidebar) return;
+        sidebar.classList.remove('-translate-x-full');
+        if (backdrop) { backdrop.classList.remove('hidden'); }
+        document.body.classList.add('overflow-hidden');
+    }
+    if (openBtn && sidebar) {
+        openBtn.addEventListener('click', openSidebar);
+    }
+    if (backdrop) {
+        backdrop.addEventListener('click', closeSidebar);
+    }
+    if (sidebar) {
+        sidebar.querySelectorAll('a').forEach(function(a) {
+            a.addEventListener('click', function() {
+                if (window.matchMedia('(max-width: 767px)').matches) closeSidebar();
             });
-        }
-    });
-    </script>
-    
-    <!-- Account Selector Script -->
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const desktopSelector = document.getElementById('global-account-selector');
-        const mobileSelector = document.getElementById('mobile-account-selector');
-        
-        function handleAccountChange(accountId) {
-            const params = new URLSearchParams(window.location.search);
-            const month = params.get('month') || '';
-            
-            let newUrl = '';
-            if (window.location.pathname === '/' || window.location.pathname === '') {
-                newUrl = `/?account=${accountId}${month ? '&month=' + month : ''}`;
-            } else if (window.location.pathname === '/transactions') {
-                newUrl = `/transactions?account=${accountId}${month ? '&month=' + month : ''}`;
-            } else {
-                return; // Don't redirect on other pages
+        });
+    }
+});
+</script>
+
+
+{% block scripts %}{% endblock %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('profile-menu-btn');
+    var dropdown = document.getElementById('profile-dropdown');
+    if (btn && dropdown) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            dropdown.classList.toggle('hidden');
+            dropdown.classList.toggle('translate-y-0');
+        });
+        document.addEventListener('click', function(e) {
+            var container = btn.parentElement;
+            if (container && !container.contains(e.target)) {
+                dropdown.classList.add('hidden');
+                dropdown.classList.remove('translate-y-0');
             }
-            
-            if (newUrl) {
-                window.location.href = newUrl;
-            }
-        }
-        
-        if (desktopSelector) {
-            // Set correct value on page load
-            const params = new URLSearchParams(window.location.search);
-            const currentAccount = params.get('account') || 'all';
-            desktopSelector.value = currentAccount;
-            
-            desktopSelector.addEventListener('change', function() {
-                handleAccountChange(this.value);
-            });
-        }
-        
-        if (mobileSelector) {
-            const params = new URLSearchParams(window.location.search);
-            const currentAccount = params.get('account') || 'all';
-            mobileSelector.value = currentAccount;
-            
-            mobileSelector.addEventListener('change', function() {
-                handleAccountChange(this.value);
-            });
-        }
-    });
-    </script>
-    
+        });
+    }
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
+});
+</script>
 </body>
 </html>

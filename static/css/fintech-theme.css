@@ -1,0 +1,182 @@
+/**
+ * FinTrack — dark fintech design tokens & utilities
+ * Complements Tailwind CDN (see base.html tailwind.config).
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* Gradient text utility (used in header logo) */
+.ft-gradient-text {
+  background: linear-gradient(135deg, #cc84ff 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+:root {
+  --ft-bg: #000000;
+  --ft-card: #161618;
+  --ft-elevated: #212124;
+  --ft-border: transparent; /* Inspiration image has completely borderless cards */
+  --ft-text: #ffffff;
+  --ft-muted: #8b8b93;
+  --ft-secondary: #5e5e66;
+  --ft-accent-btn: #cc84ff; /* Vibrant solid purple for buttons */
+  --ft-accent-blue: #4d77ff; /* Blue bars in chart */
+  --ft-accent-purple: #ae52ff; /* Purple bars in chart */
+  --ft-glow: rgba(204, 132, 255, 0.4);
+}
+
+body {
+  background-color: var(--ft-bg);
+  color: var(--ft-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Card shell */
+.ft-card {
+  background-color: var(--ft-card);
+  border: none;
+  border-radius: 28px;
+  padding: 24px;
+}
+
+.ft-card-elevated {
+  background-color: var(--ft-elevated);
+  border: none;
+  border-radius: 20px;
+  padding: 16px;
+}
+
+/* Credit Card Image Sub-Element */
+.ft-credit-card {
+  background: radial-gradient(circle at top left, rgba(62,49,114,0.9), transparent 60%),
+              radial-gradient(circle at bottom right, rgba(230,165,255,0.7), transparent 70%),
+              radial-gradient(circle at center, rgba(144,116,211,0.5), transparent 50%);
+  background-color: #1e1b33;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  position: relative;
+}
+.ft-credit-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    backdrop-filter: blur(24px);
+    z-index: 0;
+}
+.ft-credit-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Inputs — Pill shapes with dark borders in Fast Transfer */
+.ft-input-group {
+  display: flex;
+  align-items: center;
+  background-color: transparent;
+  border: 1px solid #333338;
+  border-radius: 9999px;
+  padding: 4px 16px;
+  color: var(--ft-text);
+  margin-bottom: 12px;
+}
+.ft-input-group label {
+  color: var(--ft-muted);
+  font-size: 13px;
+  margin-right: 12px;
+  min-width: 50px;
+}
+.ft-input-group input, .ft-input-group select {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 14px;
+  padding: 10px 0;
+}
+.ft-input-group input:focus, .ft-input-group select:focus {
+  outline: none;
+}
+
+/* Search bar pill */
+.ft-search {
+  background-color: #27272a;
+  border: none;
+  border-radius: 9999px;
+  color: white;
+  padding: 10px 16px 10px 38px;
+  font-size: 14px;
+}
+
+/* Standalone input fields */
+.ft-input {
+  background-color: var(--ft-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: white;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 150ms ease;
+}
+.ft-input:focus {
+  border-color: rgba(124, 58, 237, 0.5);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.12);
+}
+.ft-input::placeholder {
+  color: #52525b;
+}
+
+/* Primary button hover glow */
+.ft-btn-primary {
+  background-color: var(--ft-accent-btn);
+  border-radius: 9999px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  color: #111; /* Dark text on bright button */
+  border: none;
+  font-size: 15px;
+  transition: transform 150ms ease;
+}
+
+.ft-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.ft-btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Progress bar exact styling */
+.ft-progress-track {
+  height: 4px;
+  background-color: var(--ft-elevated);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.ft-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+}
+
+/* Table row hover */
+.ft-table-row {
+  border-bottom: 1px solid #27272a;
+}
+.ft-table-row:last-child {
+  border-bottom: none;
+}
+.ft-table-row td, .ft-table-row th {
+  padding: 16px 0;
+}
+
+/* Sidebar width helper */
+.ft-sidebar-w {
+  width: 80px;
+}

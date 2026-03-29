@@ -134,22 +134,22 @@ function setupBankConnectFlow() {
             if (!dot || !label) {
                 return;
             }
-            dot.classList.remove('bg-indigo-600', 'text-white', 'ring-2', 'ring-indigo-200', 'scale-105', 'shadow-md');
-            dot.classList.remove('bg-emerald-500', 'text-white', 'ring-2', 'ring-emerald-200');
-            dot.classList.remove('bg-gray-200', 'text-gray-600');
-            label.classList.remove('text-gray-900', 'font-semibold', 'text-gray-500');
+            dot.classList.remove('bg-violet-600', 'text-white', 'ring-2', 'ring-violet-500/40', 'scale-105', 'shadow-md');
+            dot.classList.remove('bg-emerald-500', 'text-white', 'ring-2', 'ring-emerald-400/30');
+            dot.classList.remove('bg-zinc-700', 'text-zinc-300');
+            label.classList.remove('text-white', 'font-semibold', 'text-zinc-500');
 
             if (idx < current) {
-                dot.classList.add('bg-emerald-500', 'text-white', 'ring-2', 'ring-emerald-200');
+                dot.classList.add('bg-emerald-500', 'text-white', 'ring-2', 'ring-emerald-400/30');
                 dot.classList.add('transition-all', 'duration-300');
-                label.classList.add('text-gray-600');
+                label.classList.add('text-zinc-400');
             } else if (idx === current) {
-                dot.classList.add('bg-indigo-600', 'text-white', 'ring-2', 'ring-indigo-200', 'scale-105', 'shadow-md');
+                dot.classList.add('bg-violet-600', 'text-white', 'ring-2', 'ring-violet-500/40', 'scale-105', 'shadow-md');
                 dot.classList.add('transition-all', 'duration-300');
-                label.classList.add('text-gray-900', 'font-semibold');
+                label.classList.add('text-white', 'font-semibold');
             } else {
-                dot.classList.add('bg-gray-200', 'text-gray-600', 'transition-all', 'duration-300');
-                label.classList.add('text-gray-500');
+                dot.classList.add('bg-zinc-700', 'text-zinc-300', 'transition-all', 'duration-300');
+                label.classList.add('text-zinc-500');
             }
         });
     }
@@ -193,13 +193,13 @@ function setupBankConnectFlow() {
         cardsContainer.querySelectorAll('.account-select-card').forEach(function (el) {
             el.classList.remove(
                 'ring-2',
-                'ring-indigo-600',
-                'bg-indigo-50',
-                'border-indigo-500',
+                'ring-violet-500',
+                'bg-violet-500/15',
+                'border-violet-500/50',
                 'shadow-md',
                 'account-select-card--selected'
             );
-            el.classList.add('border-gray-200', 'bg-white');
+            el.classList.add('border-white/10', 'bg-zinc-950');
             el.setAttribute('aria-checked', 'false');
         });
         updateSubmitEnabled();
@@ -210,7 +210,7 @@ function setupBankConnectFlow() {
         (banks || []).forEach(function (bank) {
             const bankName = bank.name || 'Bank';
             const header = document.createElement('h3');
-            header.className = 'text-sm font-bold text-gray-800 mt-4 first:mt-0 mb-2';
+            header.className = 'mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 first:mt-0';
             header.textContent = bankName;
             cardsContainer.appendChild(header);
 
@@ -219,7 +219,7 @@ function setupBankConnectFlow() {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className =
-                    'account-select-card w-full text-left rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm hover:border-indigo-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 mb-2';
+                    'account-select-card mb-2 w-full rounded-2xl border border-white/10 bg-zinc-950 p-4 text-left shadow-sm transition hover:border-violet-500/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-500/50';
                 btn.setAttribute('role', 'radio');
                 btn.setAttribute('aria-checked', 'false');
                 btn.dataset.accountId = String(id);
@@ -229,15 +229,15 @@ function setupBankConnectFlow() {
                 btn.dataset.maskedAccountNumber = acc.account_number_masked || '';
 
                 const name = document.createElement('div');
-                name.className = 'font-semibold text-gray-900 text-base';
+                name.className = 'text-base font-semibold text-white';
                 name.textContent = (acc.type || 'Account') + (acc.account_number_masked ? ' · ' + acc.account_number_masked : '');
 
                 const meta = document.createElement('div');
-                meta.className = 'text-sm text-gray-600 mt-1';
+                meta.className = 'mt-1 text-sm text-zinc-500';
                 meta.textContent = acc.name || discoverState.holderName || '';
 
                 const bal = document.createElement('div');
-                bal.className = 'text-lg font-semibold text-gray-900 mt-3 tabular-nums';
+                bal.className = 'mt-3 text-lg font-semibold tabular-nums text-white';
                 bal.textContent = formatINR(acc.balance != null ? acc.balance : 0);
 
                 btn.appendChild(name);
@@ -250,13 +250,13 @@ function setupBankConnectFlow() {
                     if (formIdentityId) formIdentityId.value = discoverState.identityId || '';
                     if (formBankName) formBankName.value = btn.dataset.bankName || '';
                     if (formMasked) formMasked.value = btn.dataset.maskedAccountNumber || '';
-                    btn.classList.remove('border-gray-200', 'bg-white');
+                    btn.classList.remove('border-white/10', 'bg-zinc-950');
                     btn.classList.add(
                         'account-select-card--selected',
                         'ring-2',
-                        'ring-indigo-600',
-                        'bg-indigo-50',
-                        'border-indigo-500',
+                        'ring-violet-500',
+                        'bg-violet-500/15',
+                        'border-violet-500/50',
                         'shadow-md'
                     );
                     btn.setAttribute('aria-checked', 'true');
@@ -505,6 +505,34 @@ function setupSyncButton() {
                 btn.classList.remove('opacity-75');
             });
     });
+}
+
+/**
+ * Hide the post-connect success panel and re-initialize the connect flow
+ * so the user can link another account without a page reload.
+ */
+function resetAndShowConnectFlow() {
+    // Hide success panel
+    var successPanel = document.getElementById('bank-connect-success');
+    if (successPanel) successPanel.classList.add('hidden');
+
+    // Show the connect section
+    var onboarding = document.getElementById('bank-connect-onboarding');
+    if (onboarding) {
+        onboarding.classList.remove('hidden');
+        onboarding.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Re-run setup so all handlers are live again
+    discoverState = { identityId: '', holderName: '' };
+    setupBankConnectFlow();
+
+    // If identity is already filled, auto-fetch accounts
+    var identityInput = document.getElementById('identity_id_input');
+    if (identityInput && identityInput.value.trim().length >= 5) {
+        var fetchBtn = document.getElementById('fetch-accounts-btn');
+        if (fetchBtn) fetchBtn.click();
+    }
 }
 
 function setupDemoDataButton() {
